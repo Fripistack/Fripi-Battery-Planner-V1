@@ -1,5 +1,7 @@
 # Batterij Planner voor Home Assistant
 
+**Versie: 5.0.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
 Bij elke berekening worden **alle bekende kwartieren tegelijk** doorgerekend: vandaag en morgen, tot ongeveer 35 uur vooruit. Per kwartier kiest de planner wat het meest oplevert:
@@ -60,8 +62,12 @@ config/
         └── ... (overige bestanden + map translations)
 ```
 
-**Via HACS (als deze map in een eigen GitHub-repository staat):**
-HACS → ⋮ → Aangepaste repositories → URL van de repository, categorie *Integratie* → **Batterij Planner** downloaden.
+**Via HACS (aanbevolen, dan krijg je updates in Home Assistant):**
+1. HACS → ⋮ rechtsboven → **Aangepaste repositories**.
+2. URL `https://github.com/Fripistack/Fripi-Battery-Planner-V1`, type **Integratie** → Toevoegen.
+3. Zoek **Batterij Planner** → **Downloaden**.
+
+Nieuwe versies verschijnen daarna onder **Instellingen → Updates**. Klik op Installeren en herstart Home Assistant.
 
 ### 3. Herstarten
 
@@ -187,3 +193,13 @@ logger:
   logs:
     custom_components.batterij_planner: debug
 ```
+
+## Versiegeschiedenis
+
+### 5.0.1
+- Instellingenscherm (Configureren → Instellingen) opent weer. Twee velden hadden een stapgrootte die Home Assistant weigert, waardoor je een lege foutmelding kreeg.
+- Links naar deze repository in het manifest.
+- Releases worden automatisch aangemaakt, zodat HACS versienummers toont in plaats van commitcodes.
+
+### 5.0.0
+- Eerste versie als integratie, in te stellen via het scherm. Volgt de YAML-/python_script-versie op.
