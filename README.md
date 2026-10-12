@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.1.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.1.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -167,36 +167,25 @@ Twee dingen moet je één keer zelf testen:
 - **Automatisch** (standaard): t/m 31-12-2026 is terugleveren evenveel waard als de afnameprijs van dat kwartier, vanaf 1-1-2027 marktprijs + opslag (€ 0,0182). Dit wordt per kwartier bepaald, dus ook de jaarwissel gaat goed.
 - Saldering geldt alleen tot je jaarafname. Lever je over het jaar netto méér terug dan je afneemt, kies dan *Geen saldering*.
 
-## Dashboardkaart (apexcharts-card)
+## Dashboard
 
-```yaml
-type: custom:apexcharts-card
-header: {show: true, title: Batterijplan, show_states: true}
-graph_span: 36h
-span: {start: hour, offset: -1h}
-now: {show: true, label: nu}
-yaxis:
-  - id: prijs
-    decimals: 2
-  - id: soc
-    opposite: true
-    min: 0
-    max: 100
-series:
-  - entity: sensor.batterij_planner_modus
-    name: Afnameprijs
-    type: column
-    yaxis_id: prijs
-    data_generator: "return (entity.attributes.slots||[]).map(s => [s[0], s[3]]);"
-  - entity: sensor.batterij_planner_modus
-    name: Geplande SOC
-    type: line
-    yaxis_id: soc
-    stroke_width: 3
-    data_generator: "return (entity.attributes.slots||[]).map(s => [s[0] + 900000, s[2]]);"
-```
+In [`dashboard/battery_planner_dashboard.yaml`](dashboard/battery_planner_dashboard.yaml) staat een kant-en-klaar dashboard met drie tabbladen:
 
-Elk item in `slots` is `[tijd_ms, modus (Z/V/L/O), soc%, afnameprijs, terugleverprijs, pv_kW, verbruik_kW]`.
+| tabblad | inhoud |
+|---|---|
+| **Overview** | huidige modus, volgende actie, SOC en doel-SOC, verwachte besparing, schakelaar *Control inverter* en knop *Recalculate plan*; vermogens nu (zon, huis, accu, net) en de actuele afname- en terugleverprijs; grafiek met prijzen per kwartier, gekleurd per geplande actie (laden, ontladen, vasthouden), plus de geplande SOC; tabel met de geplande blokken; plandetails (kosten met en zonder plan, verwachte zon en verbruik, laatste opdrachten naar de omvormer) |
+| **Frank prices** | actuele prijzen; *optimal cheap* en *optimal expensive period* (aan/uit, sinds wanneer en het tijdvak); goedkoopste en duurste kwartier van vandaag en morgen; gemiddelde prijs; staafgrafiek van vandaag en morgen |
+| **Inverter** | informatielijsten (geen grafieken): status, omvormertemperatuur, Storage Mode, netladen, netspanning en -frequentie, alarmcode; accu: SOC, SOH, temperatuur (BMS), spanning, stroom, vermogen, BMS-laad-/ontlaadlimieten, overdischarge- en force-charge-SOC; PV-strings; de Time-Charging-instellingen die de planner schrijft; energie vandaag |
+
+**Installeren**
+
+1. Installeer via HACS → Frontend de kaart **apexcharts-card** (als je die nog niet hebt).
+2. Ga naar Instellingen → Dashboards → **+ Dashboard toevoegen** → *Nieuw dashboard vanaf nul*. Noem het *Battery Planner* en open het.
+3. Klik op ✏️ (bewerken) → ⋮ → **Ruwe configuratie-editor**, vervang alles door de inhoud van het bestand en klik op **Opslaan**.
+
+De entity-ID's gaan uit van een installatie vanaf 5.0.x, Solis Modbus met apparaatnaam *PV omvormer* en Frank Quarter Prices. Toont een kaart een gele waarschuwing, dan heet die entiteit bij jou anders. Zoek de juiste naam op in Ontwikkelaarshulpmiddelen → Statussen en pas hem aan in de ruwe configuratie-editor. De Frank *optimal cheap/expensive period*-sensoren heten `binary_sensor.frank_optimal_cheap_period` en `binary_sensor.frank_optimal_expensive_period`.
+
+Elk item in het attribuut `slots` van de Mode-sensor is `[tijd_ms, modus (Z/V/L/O), soc%, afnameprijs, terugleverprijs, pv_kW, verbruik_kW]`. Gebruik dat als je zelf grafieken wilt maken.
 
 ## Problemen oplossen
 
@@ -216,6 +205,9 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.1.1
+- Kant-en-klaar dashboard (`dashboard/battery_planner_dashboard.yaml`) met de tabbladen Overview, Frank prices (met optimal cheap/expensive periods) en Inverter (temperaturen, accu-, net- en PV-gegevens als informatielijst).
 
 ### 5.1.0
 - Alle schermen in het Engels, met de namen uit Solis Modbus (Battery SOC, Household load power, Time-Charging Charge Start (Slot 1), Storage Mode, …).

@@ -1,0 +1,472 @@
+# =============================================================================
+#  Battery Planner – dashboard
+#
+#  Installatie: Instellingen → Dashboards → + Dashboard toevoegen → "Nieuw
+#  dashboard vanaf nul" → naam "Battery Planner" → openen → ✏️ → ⋮ →
+#  "Ruwe configuratie-editor" → alles vervangen door dit bestand → Opslaan.
+#
+#  Vereist (HACS → Frontend): apexcharts-card (RomRider)
+#
+#  Entity-ID's:
+#   - Batterij Planner: ID's van een installatie vanaf 5.0.x (Nederlandse ID's).
+#     Bij een nieuwe installatie vanaf 5.1.0 zijn ze Engels, zie de README.
+#   - Solis Modbus met apparaatnaam "PV omvormer" (prefix pv_omvormer_).
+#   - Frank Quarter Prices (sensor.frank_*) en de Frank optimal cheap/expensive
+#     period binary sensors.
+#  Een entiteit die bij jou anders heet, toont een gele waarschuwing: zoek de
+#  juiste naam op in Ontwikkelaarshulpmiddelen → Statussen en pas hem hier aan.
+# =============================================================================
+title: Battery Planner
+views:
+  # ---------------------------------------------------------------- OVERVIEW
+  - title: Overview
+    path: overview
+    icon: mdi:home-battery
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Planner
+            icon: mdi:robot
+          - type: tile
+            entity: sensor.batterij_planner_modus
+            name: Current mode
+            grid_options: {columns: 12}
+          - type: tile
+            entity: sensor.batterij_planner_volgende_actie
+            name: Next action
+            grid_options: {columns: 12}
+          - type: tile
+            entity: sensor.pv_omvormer_battery_soc
+            name: Battery SOC
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.batterij_planner_doel_soc_einde_blok
+            name: Target SOC
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.batterij_planner_verwachte_besparing
+            name: Expected saving
+            grid_options: {columns: 6}
+          - type: tile
+            entity: switch.batterij_planner_sturing_actief
+            name: Control inverter
+            grid_options: {columns: 6}
+          - type: button
+            entity: button.batterij_planner_plan_herberekenen
+            name: Recalculate plan
+            icon: mdi:refresh
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.batterij_planner_plan_herberekenen
+            grid_options: {columns: 12, rows: 1}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Power now
+            icon: mdi:flash
+          - type: tile
+            entity: sensor.pv_omvormer_total_pv_power
+            name: Solar
+            color: amber
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.pv_omvormer_household_load_power
+            name: House
+            color: blue
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.pv_omvormer_battery_power
+            name: Battery
+            color: green
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.pv_omvormer_ac_grid_port_power
+            name: Grid
+            color: grey
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.frank_current_price
+            name: Import price now
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.frank_current_return_price
+            name: Feed-in price now
+            grid_options: {columns: 6}
+
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Plan – prices and planned SOC
+            icon: mdi:chart-timeline-variant
+          - type: custom:apexcharts-card
+            graph_span: 36h
+            span:
+              start: hour
+              offset: -1h
+            now:
+              show: true
+              label: now
+            header:
+              show: false
+            apex_config:
+              chart: {height: 300}
+              legend: {show: true}
+              tooltip:
+                x: {format: "ddd HH:mm"}
+            yaxis:
+              - id: price
+                decimals: 2
+                apex_config:
+                  title: {text: "€/kWh"}
+              - id: soc
+                opposite: true
+                min: 0
+                max: 100
+                decimals: 0
+                apex_config:
+                  title: {text: "SOC %"}
+            series:
+              - entity: sensor.batterij_planner_modus
+                name: Import price
+                type: column
+                yaxis_id: price
+                color: "#9e9e9e"
+                data_generator: |
+                  return (entity.attributes.slots || []).map(s => [s[0], s[3]]);
+              - entity: sensor.batterij_planner_modus
+                name: Charge
+                type: column
+                yaxis_id: price
+                color: "#43a047"
+                data_generator: |
+                  return (entity.attributes.slots || []).map(s => [s[0], s[1] === 'L' ? s[3] : null]);
+              - entity: sensor.batterij_planner_modus
+                name: Discharge
+                type: column
+                yaxis_id: price
+                color: "#e53935"
+                data_generator: |
+                  return (entity.attributes.slots || []).map(s => [s[0], s[1] === 'O' ? s[3] : null]);
+              - entity: sensor.batterij_planner_modus
+                name: Hold
+                type: column
+                yaxis_id: price
+                color: "#fb8c00"
+                data_generator: |
+                  return (entity.attributes.slots || []).map(s => [s[0], s[1] === 'V' ? s[3] : null]);
+              - entity: sensor.batterij_planner_modus
+                name: Planned SOC
+                type: line
+                yaxis_id: soc
+                color: "#1e88e5"
+                stroke_width: 3
+                data_generator: |
+                  return (entity.attributes.slots || []).map(s => [s[0] + 900000, s[2]]);
+
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Planned blocks
+            icon: mdi:format-list-bulleted
+          - type: markdown
+            content: |
+              {% set namen = {'zelfverbruik': '🏠 Self-consumption', 'vasthouden': '⏸️ Hold',
+                              'laden': '🔋 Charge', 'ontladen': '⚡ Discharge'} %}
+              {% set blokken = state_attr('sensor.batterij_planner_modus', 'blokken') or [] %}
+              {% set fout = state_attr('sensor.batterij_planner_modus', 'fout') %}
+              {% if fout %}**⚠️ {{ fout }}** – falling back to self-consumption.{% endif %}
+              {% if blokken %}
+              | When | Mode | SOC | Avg. import | Avg. feed-in |
+              |:--|:--|--:|--:|--:|
+              {% for b in blokken[:16] -%}
+              | {{ as_timestamp(b.start) | timestamp_custom('%a %H:%M') }}–{{ as_timestamp(b.eind) | timestamp_custom('%H:%M') }} | {{ namen[b.modus] }} | {{ b.soc_start | round(0) | int }} → {{ b.soc_eind | round(0) | int }} % | € {{ '%.3f' | format(b.afname_gem) }} | € {{ '%.3f' | format(b.teruglever_gem) }} |
+              {% endfor %}
+              {% else %}No plan available yet.{% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Plan details
+            icon: mdi:information-outline
+          - type: markdown
+            content: |
+              {% set e = 'sensor.batterij_planner_modus' %}
+              {% set a = states[e].attributes if states[e] is defined else {} %}
+              | | |
+              |:--|--:|
+              | Cost with plan | € {{ a.get('kosten_plan', '–') }} |
+              | Cost self-consumption only | € {{ a.get('kosten_zelfverbruik', '–') }} |
+              | Battery throughput planned | {{ a.get('doorvoer_kwh', '–') }} kWh |
+              | Solar expected | {{ a.get('pv_verwacht_kwh', '–') }} kWh ({{ a.get('pv_bron', '–') }}) |
+              | Consumption expected | {{ a.get('verbruik_verwacht_kwh', '–') }} kWh |
+              | Prices known until | {{ as_timestamp(a.horizon_einde) | timestamp_custom('%a %H:%M') if a.get('horizon_einde') else '–' }} |
+              | Value of remaining charge | € {{ a.get('restwaarde_eur_kwh', '–') }}/kWh |
+              | Last calculation | {{ as_timestamp(a.bijgewerkt) | timestamp_custom('%H:%M:%S') if a.get('bijgewerkt') else '–' }} |
+
+              **Last inverter commands**
+              {% for r in a.get('laatste_schrijfacties', []) %}
+              - `{{ r }}`
+              {% else %}
+              - none yet
+              {% endfor %}
+
+  # ---------------------------------------------------------------- PRICES
+  - title: Frank prices
+    path: prices
+    icon: mdi:currency-eur
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Now
+            icon: mdi:clock-outline
+          - type: tile
+            entity: sensor.frank_current_price
+            name: Import price
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.frank_current_return_price
+            name: Feed-in price
+            grid_options: {columns: 6}
+          - type: tile
+            entity: binary_sensor.frank_optimal_cheap_period
+            name: Optimal cheap period
+            color: green
+            grid_options: {columns: 6}
+          - type: tile
+            entity: binary_sensor.frank_optimal_expensive_period
+            name: Optimal expensive period
+            color: red
+            grid_options: {columns: 6}
+          - type: tile
+            entity: binary_sensor.frank_tomorrow_prices_available
+            name: Tomorrow's prices published
+            grid_options: {columns: 12}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Cheapest and most expensive quarter
+            icon: mdi:swap-vertical
+          - type: markdown
+            content: |
+              {% macro rij(label, prijs, tijd) -%}
+              | {{ label }} | {{ states(tijd) if states(tijd) not in ['unknown', 'unavailable'] else '–' }} | {{ ('€ %.3f' | format(states(prijs) | float)) if states(prijs) | is_number else '–' }} |
+              {%- endmacro %}
+              | | Time | Price |
+              |:--|--:|--:|
+              {{ rij('🟢 Cheapest today', 'sensor.frank_cheapest_today', 'sensor.frank_cheapest_time_today') }}
+              {{ rij('🔴 Most expensive today', 'sensor.frank_most_expensive_today', 'sensor.frank_most_expensive_time_today') }}
+              {{ rij('🟢 Cheapest tomorrow', 'sensor.frank_cheapest_tomorrow', 'sensor.frank_cheapest_time_tomorrow') }}
+              {{ rij('🔴 Most expensive tomorrow', 'sensor.frank_most_expensive_tomorrow', 'sensor.frank_most_expensive_time_tomorrow') }}
+
+              {% set avg = state_attr('sensor.frank_prices_today', 'average_price') %}
+              {% if avg is not none %}Average today: **€ {{ '%.3f' | format(avg) }}**{% endif %}
+              {% set avg2 = state_attr('sensor.frank_prices_tomorrow', 'average_price') %}
+              {% if avg2 is not none %} · tomorrow: **€ {{ '%.3f' | format(avg2) }}**{% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Optimal periods
+            icon: mdi:calendar-range
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: binary_sensor.frank_optimal_cheap_period
+                name: Cheap period active
+                secondary_info: last-changed
+              - entity: binary_sensor.frank_optimal_expensive_period
+                name: Expensive period active
+                secondary_info: last-changed
+          - type: markdown
+            content: |
+              {% for e, label in [('binary_sensor.frank_optimal_cheap_period', '🟢 Cheap'),
+                                  ('binary_sensor.frank_optimal_expensive_period', '🔴 Expensive')] %}
+              {% set a = states[e].attributes if states[e] is defined else {} %}
+              {% set van = a.get('start') or a.get('start_time') or a.get('from') %}
+              {% set tot = a.get('end') or a.get('end_time') or a.get('till') %}
+              **{{ label }}**: {% if van and tot %}{{ as_timestamp(van) | timestamp_custom('%a %H:%M') }}–{{ as_timestamp(tot) | timestamp_custom('%H:%M') }}{% else %}{{ states(e) }}{% endif %}
+
+              {% endfor %}
+
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Prices today and tomorrow
+            icon: mdi:chart-bar
+          - type: custom:apexcharts-card
+            graph_span: 48h
+            span:
+              start: day
+            now:
+              show: true
+              label: now
+            header:
+              show: false
+            experimental:
+              color_threshold: true
+            apex_config:
+              chart: {height: 280}
+              legend: {show: false}
+              tooltip:
+                x: {format: "ddd HH:mm"}
+              yaxis:
+                decimalsInFloat: 2
+            series:
+              - entity: sensor.frank_prices_today
+                name: Price
+                type: column
+                color_threshold:
+                  - {value: 0, color: "#43a047"}
+                  - {value: 0.20, color: "#fb8c00"}
+                  - {value: 0.30, color: "#e53935"}
+                data_generator: |
+                  const t = (entity.attributes.prices || []);
+                  const m = (hass.states['sensor.frank_prices_tomorrow']?.attributes?.prices || []);
+                  return t.concat(m).map(r => [new Date(r.from).getTime(), Number(r.total_price_eur_kwh)]);
+
+  # ---------------------------------------------------------------- INVERTER
+  - title: Inverter
+    path: inverter
+    icon: mdi:solar-power-variant
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Inverter (Solis RHI-3.6K-48ES-5G)
+            icon: mdi:solar-power-variant
+          - type: entities
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: sensor.pv_omvormer_status
+                name: Status
+              - entity: sensor.pv_omvormer_temperature
+                name: Inverter temperature
+                icon: mdi:thermometer
+              - entity: select.pv_omvormer_work_mode
+                name: Storage Mode
+              - entity: switch.pv_omvormer_allow_grid_to_charge_the_battery
+                name: Allow Grid to Charge the Battery
+              - type: divider
+              - entity: sensor.pv_omvormer_a_phase_voltage
+                name: Grid voltage
+              - entity: sensor.pv_omvormer_grid_frequency
+                name: Grid frequency
+              - entity: sensor.pv_omvormer_ac_grid_port_power
+                name: AC grid port power
+              - entity: sensor.pv_omvormer_alarm_code_data
+                name: Alarm code
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery (Dyness)
+            icon: mdi:battery-high
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: sensor.pv_omvormer_battery_soc
+                name: State of charge
+              - entity: sensor.pv_omvormer_battery_soh
+                name: State of health
+              - entity: sensor.pv_omvormer_battery_temperature_bms
+                name: Battery temperature (BMS)
+                icon: mdi:thermometer
+              - entity: sensor.pv_omvormer_battery_voltage
+                name: Battery voltage
+              - entity: sensor.pv_omvormer_battery_current
+                name: Battery current
+              - entity: sensor.pv_omvormer_battery_power
+                name: Battery power
+              - type: divider
+              - entity: sensor.pv_omvormer_battery_charge_current_limitation_bms
+                name: Charge current limit (BMS)
+              - entity: sensor.pv_omvormer_battery_discharge_current_limitation_bms
+                name: Discharge current limit (BMS)
+              - entity: number.pv_omvormer_overdischarge_soc
+                name: Overdischarge SOC
+              - entity: number.pv_omvormer_force_charge_soc
+                name: Force charge SOC
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Solar strings
+            icon: mdi:solar-panel
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: sensor.pv_omvormer_total_pv_power
+                name: Total PV power
+              - entity: sensor.pv_omvormer_pv_voltage_1
+                name: PV voltage string 1
+              - entity: sensor.pv_omvormer_pv_current_1
+                name: PV current string 1
+              - entity: sensor.pv_omvormer_pv_voltage_2
+                name: PV voltage string 2
+              - entity: sensor.pv_omvormer_pv_current_2
+                name: PV current string 2
+              - type: divider
+              - entity: sensor.energy_production_today_remaining
+                name: Forecast remaining today
+              - entity: sensor.energy_production_tomorrow
+                name: Forecast tomorrow
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Time-Charging (written by the planner)
+            icon: mdi:timer-cog-outline
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: time.pv_omvormer_time_charging_charge_start_slot_1
+                name: Charge start (slot 1)
+              - entity: time.pv_omvormer_time_charging_charge_end_slot_1
+                name: Charge end (slot 1)
+              - entity: number.pv_omvormer_time_charging_charge_current
+                name: Charge current
+              - type: divider
+              - entity: time.pv_omvormer_time_charging_discharge_start_slot_1
+                name: Discharge start (slot 1)
+              - entity: time.pv_omvormer_time_charging_discharge_end_slot_1
+                name: Discharge end (slot 1)
+              - entity: number.pv_omvormer_time_charging_discharge_current
+                name: Discharge current
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Energy today
+            icon: mdi:counter
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: sensor.pv_omvormer_pv_today_energy_generation
+                name: Solar generated
+              - entity: sensor.pv_omvormer_today_energy_consumption
+                name: House consumption
+              - entity: sensor.pv_omvormer_today_battery_charge_energy
+                name: Battery charged
+              - entity: sensor.pv_omvormer_today_battery_discharge_energy
+                name: Battery discharged
+              - entity: sensor.pv_omvormer_today_energy_imported_from_grid
+                name: Imported from grid
+              - entity: sensor.pv_omvormer_today_energy_fed_into_grid
+                name: Fed into grid
