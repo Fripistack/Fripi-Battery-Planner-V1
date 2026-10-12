@@ -7,6 +7,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .const import (
@@ -108,61 +109,84 @@ def _num(minimum: float, maximum: float, stap: float | str, eenheid: str | None 
     )
 
 
+SECTIES: dict[str, list[str]] = {
+    "accu": [
+        "capaciteit_kwh", "min_soc", "max_soc", "max_laad_w", "max_ontlaad_w",
+        "rendement_laden", "rendement_ontladen", "slijtage_eur_kwh",
+    ],
+    "prijzen": ["saldering", "saldering_correctie", "teruglever_opslag", "eindwaarde_factor"],
+    "voorspelling": ["pv_factor", "verbruik_fallback_w"],
+    "omvormer": [CONF_SPANNING, CONF_VASTHOUDEN_STROOM, CONF_WERKMODUS_TOU],
+    "meldingen": [CONF_NOTIFY],
+}
+
+
+def _plat(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Secties uit het formulier platslaan naar één dict met instellingen."""
+    plat: dict[str, Any] = {}
+    for key, waarde in user_input.items():
+        if key in SECTIES and isinstance(waarde, dict):
+            plat.update(waarde)
+        else:
+            plat[key] = waarde
+    return plat
+
+
+def _select(opties: list, custom: bool = False, vertaling: str | None = None) -> selector.SelectSelector:
+    extra = {"translation_key": vertaling} if vertaling else {}
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=opties, custom_value=custom, mode=selector.SelectSelectorMode.DROPDOWN, **extra
+        )
+    )
+
+
 def _instellingen_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Schema:
     w = {**STANDAARD_INSTELLINGEN, **{k: v for k, v in huidig.items() if v is not None}}
 
-    werkmodus_opties = [selector.SelectOptionDict(value=NIET_WIJZIGEN, label="Werkmodus niet aanpassen")]
+    werkmodus_opties = [
+        selector.SelectOptionDict(
+            value=NIET_WIJZIGEN,
+            label="Don't change the Storage Mode (inverter already in a TOU mode)",
+        )
+    ]
     sel_entity = huidig.get(CONF_WERKMODUS)
     st = hass.states.get(sel_entity) if sel_entity else None
     if st is not None:
         for opt in st.attributes.get("options", []):
             werkmodus_opties.append(selector.SelectOptionDict(value=str(opt), label=str(opt)))
 
-    notify_opties = [selector.SelectOptionDict(value=GEEN_MELDING, label="Geen melding")]
-    for naam in sorted(hass.services.async_services().get("notify", {})):
+    notify_opties = [
+        selector.SelectOptionDict(value=GEEN_MELDING, label="No notification")
+    ]
+    for naam in sorted(hass.services.async_services_for_domain("notify")):
         notify_opties.append(selector.SelectOptionDict(value=f"notify.{naam}", label=f"notify.{naam}"))
 
-    return vol.Schema(
-        {
-            vol.Required("capaciteit_kwh", default=w["capaciteit_kwh"]): _num(1, 100, 0.1, "kWh"),
-            vol.Required("min_soc", default=w["min_soc"]): _num(0, 60, 1, "%"),
-            vol.Required("max_soc", default=w["max_soc"]): _num(40, 100, 1, "%"),
-            vol.Required("max_laad_w", default=w["max_laad_w"]): _num(100, 20000, 100, "W"),
-            vol.Required("max_ontlaad_w", default=w["max_ontlaad_w"]): _num(100, 20000, 100, "W"),
-            vol.Required("rendement_laden", default=w["rendement_laden"]): _num(70, 100, 0.5, "%"),
-            vol.Required("rendement_ontladen", default=w["rendement_ontladen"]): _num(70, 100, 0.5, "%"),
-            vol.Required("slijtage_eur_kwh", default=w["slijtage_eur_kwh"]): _num(0, 0.3, 0.001, "€/kWh"),
-            vol.Required("saldering", default=w["saldering"]): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        selector.SelectOptionDict(value="auto", label="Automatisch: saldering t/m 2026"),
-                        selector.SelectOptionDict(value="aan", label="Altijd saldering"),
-                        selector.SelectOptionDict(value="uit", label="Geen saldering"),
-                    ],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Required("saldering_correctie", default=w["saldering_correctie"]): _num(0, 0.2, "any", "€/kWh"),
-            vol.Required("teruglever_opslag", default=w["teruglever_opslag"]): _num(-0.1, 0.2, "any", "€/kWh"),
-            vol.Required("pv_factor", default=w["pv_factor"]): _num(0.3, 1.5, 0.05),
-            vol.Required("eindwaarde_factor", default=w["eindwaarde_factor"]): _num(0.3, 1.5, 0.05),
-            vol.Required("verbruik_fallback_w", default=w["verbruik_fallback_w"]): _num(0, 5000, 10, "W"),
-            vol.Required(CONF_SPANNING, default=w[CONF_SPANNING]): _num(10, 1000, 0.1, "V"),
-            vol.Required(CONF_VASTHOUDEN_STROOM, default=w[CONF_VASTHOUDEN_STROOM]): _num(0, 100, 1, "A"),
-            vol.Required(CONF_WERKMODUS_TOU, default=w[CONF_WERKMODUS_TOU]): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=werkmodus_opties, custom_value=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Required(CONF_NOTIFY, default=w[CONF_NOTIFY]): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=notify_opties, custom_value=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-        }
-    )
+    velden: dict[str, Any] = {
+        "capaciteit_kwh": _num(1, 100, 0.1, "kWh"),
+        "min_soc": _num(0, 60, 1, "%"),
+        "max_soc": _num(40, 100, 1, "%"),
+        "max_laad_w": _num(100, 20000, 100, "W"),
+        "max_ontlaad_w": _num(100, 20000, 100, "W"),
+        "rendement_laden": _num(70, 100, 0.5, "%"),
+        "rendement_ontladen": _num(70, 100, 0.5, "%"),
+        "slijtage_eur_kwh": _num(0, 0.3, 0.001, "€/kWh"),
+        "saldering": _select(["auto", "aan", "uit"], vertaling="saldering"),
+        "saldering_correctie": _num(0, 0.2, "any", "€/kWh"),
+        "teruglever_opslag": _num(-0.1, 0.2, "any", "€/kWh"),
+        "eindwaarde_factor": _num(0.3, 1.5, 0.05),
+        "pv_factor": _num(0.3, 1.5, 0.05),
+        "verbruik_fallback_w": _num(0, 5000, 10, "W"),
+        CONF_SPANNING: _num(10, 1000, 0.1, "V"),
+        CONF_VASTHOUDEN_STROOM: _num(0, 100, 1, "A"),
+        CONF_WERKMODUS_TOU: _select(werkmodus_opties, custom=True),
+        CONF_NOTIFY: _select(notify_opties, custom=True),
+    }
+    schema: dict[Any, Any] = {}
+    for sectie, keys in SECTIES.items():
+        sub = vol.Schema({vol.Required(k, default=w[k]): velden[k] for k in keys})
+        schema[vol.Required(sectie)] = section(sub, {"collapsed": False})
+    return vol.Schema(schema)
 
 
 class BatterijPlannerConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -220,13 +244,14 @@ class BatterijPlannerOptionsFlow(OptionsFlow):
 
     async def async_step_instellingen(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            if user_input["min_soc"] >= user_input["max_soc"]:
+            plat = _plat(user_input)
+            if plat.get("min_soc", 0) >= plat.get("max_soc", 100):
                 return self.async_show_form(
                     step_id="instellingen",
-                    data_schema=_instellingen_schema(self.hass, {**self._huidig(), **user_input}),
+                    data_schema=_instellingen_schema(self.hass, {**self._huidig(), **plat}),
                     errors={"base": "soc_bereik"},
                 )
-            return self.async_create_entry(data={**self.config_entry.options, **user_input})
+            return self.async_create_entry(data={**self.config_entry.options, **plat})
         return self.async_show_form(
             step_id="instellingen", data_schema=_instellingen_schema(self.hass, self._huidig())
         )

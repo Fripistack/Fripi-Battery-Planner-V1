@@ -16,7 +16,7 @@ async def async_setup_entry(
 
 
 class HerberekenKnop(BatterijPlannerEntity, ButtonEntity):
-    _attr_name = "Plan herberekenen"
+    _attr_translation_key = "herbereken"
     _attr_icon = "mdi:refresh"
 
     def __init__(self, coordinator) -> None:

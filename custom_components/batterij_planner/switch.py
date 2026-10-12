@@ -21,7 +21,7 @@ async def async_setup_entry(
 class SturingSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
     """Uit = alleen rekenen (meekijken), aan = omvormer aansturen."""
 
-    _attr_name = "Sturing actief"
+    _attr_translation_key = "sturing"
     _attr_icon = "mdi:robot"
 
     def __init__(self, coordinator) -> None:

@@ -10,7 +10,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BatterijPlannerConfigEntry
 from .entity import BatterijPlannerEntity
+from homeassistant.util import dt as dt_util
+
 from .optimizer import MODI
+
+DAGEN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MODUS_NAAM = {"zelfverbruik": "Self-consumption", "vasthouden": "Hold", "laden": "Charge", "ontladen": "Discharge"}
 
 ICONEN = {
     "zelfverbruik": "mdi:home-battery",
@@ -32,7 +37,7 @@ async def async_setup_entry(
 class ModusSensor(BatterijPlannerEntity, SensorEntity):
     """Huidige modus + het volledige plan als attributen."""
 
-    _attr_name = "Modus"
+    _attr_translation_key = "modus"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(MODI)
     _unrecorded_attributes = frozenset({"blokken", "slots"})
@@ -62,7 +67,7 @@ class ModusSensor(BatterijPlannerEntity, SensorEntity):
 
 
 class BesparingSensor(BatterijPlannerEntity, SensorEntity):
-    _attr_name = "Verwachte besparing"
+    _attr_translation_key = "besparing"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "EUR"
     _attr_suggested_display_precision = 2
@@ -83,7 +88,7 @@ class BesparingSensor(BatterijPlannerEntity, SensorEntity):
 
 
 class VolgendeActieSensor(BatterijPlannerEntity, SensorEntity):
-    _attr_name = "Volgende actie"
+    _attr_translation_key = "volgende_actie"
     _attr_icon = "mdi:calendar-clock"
 
     def __init__(self, coordinator) -> None:
@@ -94,12 +99,17 @@ class VolgendeActieSensor(BatterijPlannerEntity, SensorEntity):
         blokken = (self.coordinator.data or {}).get("blokken") or []
         for b in blokken[1:]:
             if b["modus"] != "zelfverbruik":
-                return f"{b['modus']} {b['tijd']}"
-        return "geen"
+                start = dt_util.parse_datetime(b["start"])
+                eind = dt_util.parse_datetime(b["eind"])
+                if start is None or eind is None:
+                    return b["modus"]
+                start, eind = dt_util.as_local(start), dt_util.as_local(eind)
+                return f"{MODUS_NAAM[b['modus']]} {DAGEN[start.weekday()]} {start:%H:%M}–{eind:%H:%M}"
+        return "None planned"
 
 
 class DoelSocSensor(BatterijPlannerEntity, SensorEntity):
-    _attr_name = "Doel-SOC einde blok"
+    _attr_translation_key = "doel_soc"
     _attr_native_unit_of_measurement = "%"
     _attr_icon = "mdi:battery-arrow-up-outline"
 
@@ -112,7 +122,7 @@ class DoelSocSensor(BatterijPlannerEntity, SensorEntity):
 
 
 class VerbruikSensor(BatterijPlannerEntity, SensorEntity):
-    _attr_name = "Geleerd verbruik laatste kwartier"
+    _attr_translation_key = "verbruiksprofiel"
     _attr_device_class = SensorDeviceClass.POWER
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT

@@ -132,7 +132,7 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("Batterij Planner: %s -> zelfverbruik", err)
             except Exception:  # noqa: BLE001 - nooit de omvormer in een rare stand laten
                 _LOGGER.exception("Batterij Planner: onverwachte fout bij berekenen")
-                resultaat = {"modus": "zelfverbruik", "fout": "onverwachte fout, zie logboek"}
+                resultaat = {"modus": "zelfverbruik", "fout": "Unexpected error, see the Home Assistant log"}
             resultaat["bijgewerkt"] = nu
             resultaat["sturing_actief"] = self.actief
             if self.actief:
@@ -167,7 +167,7 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         inst = self._instellingen()
         soc = _float(self.hass.states.get(self.conf.get(CONF_SOC) or ""))
         if soc is None:
-            raise PlanFout("SOC onbekend")
+            raise PlanFout("Battery SOC unavailable")
         tz = dt_util.get_default_time_zone()
         prijzen = [
             self._attr_lijst(self.conf.get(CONF_PRIJS_VANDAAG), "prices"),
@@ -175,7 +175,7 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]
         slots = optimizer.bouw_slots(prijzen, nu, tz)
         if not slots:
-            raise PlanFout("geen prijzen beschikbaar")
+            raise PlanFout("No prices available")
 
         optimizer.zet_terugleverprijs(slots, inst)
         optimizer.zet_verbruik(slots, self.profiel.werkdag, self.profiel.weekend, inst.verbruik_fallback_w)
@@ -302,8 +302,12 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for b in res.get("blokken", []):
             eind = dt_util.parse_datetime(b["eind"])
             if eind and dt_util.as_local(eind).date() >= morgen and b["modus"] != "zelfverbruik":
+                start = dt_util.as_local(dt_util.parse_datetime(b["start"]))
+                e = dt_util.as_local(eind)
+                naam = {"vasthouden": "Hold", "laden": "Charge", "ontladen": "Discharge"}[b["modus"]]
                 regels.append(
-                    f"{b['tijd']} {b['modus']} ({b['soc_start']:.0f}→{b['soc_eind']:.0f}%, € {b['afname_gem']:.3f})"
+                    f"{start:%H:%M}–{e:%H:%M} {naam}: SOC {b['soc_start']:.0f}% → {b['soc_eind']:.0f}%, "
+                    f"avg. price € {b['afname_gem']:.3f}/kWh"
                 )
         domein, _, naam = dienst.partition(".")
         try:
@@ -311,8 +315,8 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 domein or "notify",
                 naam,
                 {
-                    "title": f"🔋 Plan morgen – verwacht € {res.get('besparing', 0):.2f} beter dan alleen zelfverbruik",
-                    "message": "\n".join(regels) or "Morgen alleen zelfverbruik.",
+                    "title": f"🔋 Battery plan for tomorrow – expected € {res.get('besparing', 0):.2f} better than self-consumption only",
+                    "message": "\n".join(regels) or "Tomorrow: self-consumption only, no charging or discharging planned.",
                 },
                 blocking=False,
             )

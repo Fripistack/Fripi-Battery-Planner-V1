@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.0.2** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.1.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -77,51 +77,72 @@ Instellingen → ⋮ rechtsboven → **Home Assistant herstarten** → *Herstart
 
 Instellingen → **Apparaten & diensten** → **+ Integratie toevoegen** → zoek **Batterij Planner**.
 
-**Scherm 1: Bronnen.** Bestaande standaardnamen zijn al ingevuld; controleer ze.
+De schermen van de integratie zijn in het Engels, met de namen uit Solis Modbus. Elk veld heeft een uitleg onder het invoerveld.
+
+**Scherm 1: Battery Planner – data sources.** Bestaande standaardnamen zijn al ingevuld; controleer ze.
 
 | veld | jouw entiteit (waarschijnlijk) |
 |---|---|
-| Laadtoestand accu | `sensor.pv_omvormer_battery_soc` |
-| Huisverbruik | `sensor.pv_omvormer_household_load_power` (of `..._house_load_power`) |
-| Frank prijzen vandaag / morgen | `sensor.frank_prices_today` / `sensor.frank_prices_tomorrow` |
-| PV rest van vandaag / morgen | `sensor.energy_production_today_remaining` / `sensor.energy_production_tomorrow` |
-| Solcast | leeg laten, tenzij je Solcast gebruikt |
+| Battery SOC | `sensor.pv_omvormer_battery_soc` |
+| Household load power | `sensor.pv_omvormer_household_load_power` |
+| Frank prices – today / tomorrow | `sensor.frank_prices_today` / `sensor.frank_prices_tomorrow` |
+| Solar forecast – remaining today / tomorrow | `sensor.energy_production_today_remaining` / `sensor.energy_production_tomorrow` |
+| Solcast forecast (optional) | leeg laten, tenzij je Solcast gebruikt |
 
-**Scherm 2: Omvormer.** Kies de TOU-entiteiten van Solis Modbus voor laadslot 1 en ontlaadslot 1, plus de laad- en ontlaadstroom. De werkmodus is optioneel.
+**Scherm 2: Battery Planner – inverter (Solis Time-Charging).**
+
+| veld | Solis Modbus-entiteit |
+|---|---|
+| Time-Charging Charge Start / End (Slot 1) | `time.pv_omvormer_time_charging_charge_start_slot_1` / `..._charge_end_slot_1` |
+| Time-Charging Discharge Start / End (Slot 1) | `time.pv_omvormer_time_charging_discharge_start_slot_1` / `..._discharge_end_slot_1` |
+| Time-Charging Charge / Discharge Current | `number.pv_omvormer_time_charging_charge_current` / `..._discharge_current` |
+| Storage Mode (optional) | `select.pv_omvormer_work_mode` |
 
 ### 5. Instellingen controleren
 
-Bij de integratie: **Configureren → Instellingen**. Alles heeft een verstandige standaardwaarde. Controleer vooral:
+Bij de integratie: **Configureren → Settings**. De instellingen staan in vijf groepen; alles heeft een verstandige standaardwaarde.
 
-- **Capaciteit** (16 kWh), **min/max SOC** en **max laad-/ontlaadvermogen** (3000 W).
-- **Werkmodus waarin TOU actief is.** Kies hier de TOU-variant uit de lijst als de planner de werkmodus zelf mag zetten. Staat je omvormer al vast in de TOU-modus, laat dan *Werkmodus niet aanpassen* staan.
-- **Melding met plan voor morgen.** Kies je telefoon (`notify.mobile_app_...`) om rond 13–14 uur het plan voor morgen te krijgen.
+| groep | wat je instelt |
+|---|---|
+| **Battery** | capaciteit, min/max SOC, max laad-/ontlaadvermogen, rendement, slijtagekosten per ontladen kWh |
+| **Prices and feed-in** | saldering (automatisch t/m 2026), terugleveropslag na saldering, waarde van de restlading aan het einde van de planning |
+| **Forecasts** | correctiefactor zonverwachting, verbruik zolang het profiel nog niet geleerd is |
+| **Inverter control** | accuspanning (W → A), laadstroom bij *Hold* (0 A), Storage Mode tijdens laden/ontladen |
+| **Notifications** | telefoon voor het dagelijkse plan van morgen |
+
+Controleer vooral:
+- **Storage Mode to use while charging/discharging.** Kies **Self-Use + TOU** als de planner de Storage Mode zelf mag zetten. Staat je omvormer al vast in een TOU-modus, laat dan *Don't change* staan. Laden uit het net werkt alleen met **Allow Grid to Charge the Battery** aan.
+- **Send tomorrow's plan to.** Kies je telefoon (`notify.mobile_app_...`).
 
 Wijzigingen gelden direct; de integratie herlaadt zichzelf.
 
 ### 6. Een dag meekijken, daarna aanzetten
 
-Het apparaat **Batterij Planner** heeft een schakelaar **Sturing actief**, die standaard uit staat. Zolang die uit staat, rekent de planner wel, maar raakt hij de omvormer niet aan.
+Het apparaat **Batterij Planner** heeft een schakelaar **Control inverter**, die standaard uit staat. Zolang die uit staat, rekent de planner wel, maar raakt hij de omvormer niet aan.
 
-1. Kijk een dag mee met `sensor.batterij_planner_modus`. Het attribuut `blokken` toont het hele plan; de dashboardkaart hieronder maakt het overzichtelijk.
-2. Klopt het, zet dan **Sturing actief** aan.
-3. Kijk bij de eerstvolgende wissel in de Solis-entiteiten of de tijden veranderen. Het attribuut `laatste_schrijfacties` van de modus-sensor laat zien wat er is geschreven.
+1. Kijk een dag mee met de sensor **Mode**. Het attribuut `blokken` toont het hele plan; de dashboardkaart hieronder maakt het overzichtelijk.
+2. Klopt het, zet dan **Control inverter** aan.
+3. Kijk bij de eerstvolgende wissel in de Solis-entiteiten of de tijden veranderen. Het attribuut `laatste_schrijfacties` van de Mode-sensor laat zien wat er is geschreven.
 
-Zet je de schakelaar uit, dan worden beide TOU-slots leeggemaakt en draait de omvormer gewoon op zelfverbruik.
+Zet je de schakelaar uit, dan worden beide Time-Charging-slots leeggemaakt en draait de omvormer gewoon op zelfverbruik.
 
 ---
 
 ## Entiteiten
 
-| entiteit | betekenis |
-|---|---|
-| `sensor.batterij_planner_modus` | huidige modus; attributen: volledig plan (`blokken`, `slots`), kosten, PV-bron, fout |
-| `sensor.batterij_planner_verwachte_besparing` | € beter dan alleen zelfverbruik, over de hele bekende horizon |
-| `sensor.batterij_planner_volgende_actie` | bijv. `ontladen di 06:45-09:00` |
-| `sensor.batterij_planner_doel_soc_einde_blok` | verwachte SOC aan het eind van het huidige blok |
-| `sensor.batterij_planner_geleerd_verbruik_laatste_kwartier` | geleerd verbruik; attributen: profiel per uur |
-| `switch.batterij_planner_sturing_actief` | omvormer wel/niet aansturen |
-| `button.batterij_planner_plan_herberekenen` | direct opnieuw rekenen |
+Sinds 5.1.0 hebben de entiteiten Engelse namen. Entity-ID's van een bestaande installatie veranderen niet. Een nieuwe installatie krijgt Engelse ID's (tweede kolom).
+
+| naam | entity-ID (bestaand / nieuw) | betekenis |
+|---|---|---|
+| Mode | `sensor.batterij_planner_modus` / `sensor.batterij_planner_mode` | huidige modus (Self-consumption, Hold, Charge, Discharge); attributen: volledig plan (`blokken`, `slots`), kosten, PV-bron, fout |
+| Expected saving | `..._verwachte_besparing` / `..._expected_saving` | € beter dan alleen zelfverbruik, over de hele bekende horizon |
+| Next action | `..._volgende_actie` / `..._next_action` | bijv. `Discharge Tue 06:45–09:00` |
+| Target SOC end of block | `..._doel_soc_einde_blok` / `..._target_soc_end_of_block` | verwachte SOC aan het eind van het huidige blok |
+| Learned consumption last quarter | `..._geleerd_verbruik_laatste_kwartier` / `..._learned_consumption_last_quarter` | geleerd verbruik; attributen: profiel per uur |
+| Control inverter | `switch.batterij_planner_sturing_actief` / `switch.batterij_planner_control_inverter` | omvormer wel/niet aansturen |
+| Recalculate plan | `button.batterij_planner_plan_herberekenen` / `button.batterij_planner_recalculate_plan` | direct opnieuw rekenen |
+
+De ruwe status van Mode blijft `zelfverbruik` / `vasthouden` / `laden` / `ontladen`, zodat bestaande automations en dashboards blijven werken. Home Assistant toont die als Self-consumption / Hold / Charge / Discharge.
 
 ## Hoe de omvormer wordt aangestuurd
 
@@ -195,6 +216,13 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.1.0
+- Alle schermen in het Engels, met de namen uit Solis Modbus (Battery SOC, Household load power, Time-Charging Charge Start (Slot 1), Storage Mode, …).
+- Elk veld heeft een uitgebreide uitleg: wat het doet, welke entiteit je kiest en wat een hogere of lagere waarde betekent.
+- Instellingen zijn opgedeeld in vijf groepen: Battery, Prices and feed-in, Forecasts, Inverter control, Notifications.
+- Entiteiten hebben Engelse namen (Mode, Expected saving, Next action, Control inverter, …). Bestaande entity-ID's blijven gelijk.
+- Melding met het plan van morgen en foutmeldingen in het Engels, beter leesbaar (tijden, SOC en gemiddelde prijs per blok).
 
 ### 5.0.2
 - Instellingenscherm opent nu echt. Velden zonder eenheid (zoals de PV-correctiefactor) gaven een lege eenheid mee, die Home Assistant weigert. Daardoor kwam er nog steeds een lege foutmelding.

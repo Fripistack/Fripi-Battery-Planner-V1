@@ -2,114 +2,251 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sources",
-        "description": "Select the sensors for battery, load, Frank prices and PV forecast.",
+        "title": "Battery Planner – data sources",
+        "description": "Select the sensors the planner reads. Suggested entities are pre-filled when they exist.\n\nThe planner uses today's and tomorrow's 15-minute prices, the solar forecast and your learned consumption to choose for every quarter whether the battery should run in self-consumption, hold, charge or discharge.",
         "data": {
-          "soc_entity": "Battery state of charge (%)",
-          "verbruik_entity": "House load power (W, excluding battery)",
-          "prijs_vandaag_entity": "Frank prices today",
-          "prijs_morgen_entity": "Frank prices tomorrow",
-          "pv_rest_vandaag_entity": "PV forecast remaining today (kWh)",
-          "pv_morgen_entity": "PV forecast tomorrow (kWh)",
-          "solcast_vandaag_entity": "Solcast today (optional, preferred)",
-          "solcast_morgen_entity": "Solcast tomorrow (optional)"
+          "soc_entity": "Battery SOC",
+          "verbruik_entity": "Household load power",
+          "prijs_vandaag_entity": "Frank prices – today",
+          "prijs_morgen_entity": "Frank prices – tomorrow",
+          "pv_rest_vandaag_entity": "Solar forecast – remaining today",
+          "pv_morgen_entity": "Solar forecast – tomorrow",
+          "solcast_vandaag_entity": "Solcast forecast – today (optional)",
+          "solcast_morgen_entity": "Solcast forecast – tomorrow (optional)"
+        },
+        "data_description": {
+          "soc_entity": "Current state of charge of the battery in %. Solis Modbus: **Battery SOC** (e.g. `sensor.pv_omvormer_battery_soc`).",
+          "verbruik_entity": "Power consumed by the house in W, excluding battery charging/discharging. Solis Modbus: **Household load power**. Used to learn your consumption per hour (separate profiles for weekdays and weekends).",
+          "prijs_vandaag_entity": "Frank Quarter Prices sensor with today's 15-minute prices in its `prices` attribute (e.g. `sensor.frank_prices_today`). Not the current-price sensor.",
+          "prijs_morgen_entity": "Frank Quarter Prices sensor with tomorrow's prices (e.g. `sensor.frank_prices_tomorrow`). Frank publishes these around 13:00–14:00; as soon as they arrive the plan is recalculated for the full horizon.",
+          "pv_rest_vandaag_entity": "Expected solar production for the rest of today in kWh or Wh. Forecast.Solar: **Estimated energy production - remaining today**. Spread over the remaining quarters using the sun's position.",
+          "pv_morgen_entity": "Expected solar production for tomorrow in kWh or Wh. Forecast.Solar: **Estimated energy production - tomorrow**.",
+          "solcast_vandaag_entity": "Only if you use Solcast: the sensor with the `detailedForecast` attribute for today. When filled in, Solcast is used instead of the Forecast.Solar sensors above.",
+          "solcast_morgen_entity": "Only if you use Solcast: the sensor with the `detailedForecast` attribute for tomorrow."
         }
       },
       "omvormer": {
-        "title": "Inverter (Solis TOU)",
-        "description": "Select the Solis Modbus TOU entities for slot 1.",
+        "title": "Battery Planner – inverter (Solis Time-Charging)",
+        "description": "Select the Solis Modbus Time-Charging entities for slot 1. Tip: in Developer tools → States, filter on `time_charging`.\n\nThe planner only uses slot 1 and only writes a value when it actually changes. Nothing is sent to the inverter until you switch on **Control inverter** on the Battery Planner device.",
         "data": {
-          "laad_start_entity": "TOU charge slot 1 – start",
-          "laad_eind_entity": "TOU charge slot 1 – end",
-          "ontlaad_start_entity": "TOU discharge slot 1 – start",
-          "ontlaad_eind_entity": "TOU discharge slot 1 – end",
-          "laad_stroom_entity": "TOU charge current (A)",
-          "ontlaad_stroom_entity": "TOU discharge current (A)",
-          "werkmodus_entity": "Inverter work mode (optional)"
+          "laad_start_entity": "Time-Charging Charge Start (Slot 1)",
+          "laad_eind_entity": "Time-Charging Charge End (Slot 1)",
+          "ontlaad_start_entity": "Time-Charging Discharge Start (Slot 1)",
+          "ontlaad_eind_entity": "Time-Charging Discharge End (Slot 1)",
+          "laad_stroom_entity": "Time-Charging Charge Current",
+          "ontlaad_stroom_entity": "Time-Charging Discharge Current",
+          "werkmodus_entity": "Storage Mode (optional)"
+        },
+        "data_description": {
+          "laad_start_entity": "Solis Modbus time entity for the start of charge slot 1. The planner writes the start of the current quarter here when it wants to charge or hold the battery, and 00:00 when the slot is not used.",
+          "laad_eind_entity": "Solis Modbus time entity for the end of charge slot 1. The planner writes the end of the planned charge/hold block here (at most 23:59; the next block continues after midnight).",
+          "ontlaad_start_entity": "Solis Modbus time entity for the start of discharge slot 1. Used when the plan discharges the battery to the house and the grid.",
+          "ontlaad_eind_entity": "Solis Modbus time entity for the end of discharge slot 1.",
+          "laad_stroom_entity": "Solis Modbus number entity for the time-charging charge current in A. Set to max charge power ÷ battery voltage when charging, and to the 'hold' current (normally 0 A) when holding.",
+          "ontlaad_stroom_entity": "Solis Modbus number entity for the time-charging discharge current in A. Set to max discharge power ÷ battery voltage when discharging.",
+          "werkmodus_entity": "Solis Modbus **Storage Mode** select. Only needed if the planner should switch the inverter to a TOU mode itself (choose which one under Configure → Settings). Leave empty if your inverter is permanently in a TOU mode such as **Self-Use + TOU**."
         }
       }
     },
     "error": {
-      "niet_gevonden": "Entity not found",
-      "geen_getal": "This sensor is not numeric",
-      "geen_prijzen": "This sensor has no 'prices' attribute"
+      "niet_gevonden": "Entity not found.",
+      "geen_getal": "This sensor does not have a numeric value. Choose the Battery SOC sensor (%).",
+      "geen_prijzen": "This sensor has no 'prices' attribute. Choose the Frank Quarter Prices sensor for today's prices (e.g. sensor.frank_prices_today), not the current-price sensor.",
+      "soc_bereik": "Minimum SOC must be lower than maximum SOC."
     },
     "abort": {
-      "already_configured": "Already configured"
+      "already_configured": "Battery Planner is already set up."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Battery Planner",
+        "description": "What would you like to change?",
         "menu_options": {
-          "instellingen": "Settings",
-          "bronnen": "Sources",
-          "omvormer": "Inverter entities"
+          "instellingen": "Settings – battery, prices, forecasts, inverter control, notifications",
+          "bronnen": "Data sources – SOC, consumption, prices and solar forecast sensors",
+          "omvormer": "Inverter entities – Solis Time-Charging slot 1 and Storage Mode"
         }
       },
       "instellingen": {
         "title": "Settings",
-        "data": {
-          "capaciteit_kwh": "Battery capacity",
-          "min_soc": "Minimum SOC",
-          "max_soc": "Maximum SOC",
-          "max_laad_w": "Max charge power",
-          "max_ontlaad_w": "Max discharge power",
-          "rendement_laden": "Charge efficiency (AC → battery)",
-          "rendement_ontladen": "Discharge efficiency (battery → AC)",
-          "slijtage_eur_kwh": "Wear cost per discharged kWh",
-          "saldering": "Net metering",
-          "saldering_correctie": "Feed-in deduction during net metering",
-          "teruglever_opslag": "Feed-in premium without net metering",
-          "pv_factor": "PV forecast correction factor",
-          "eindwaarde_factor": "Value of remaining charge at horizon end",
-          "verbruik_fallback_w": "Load until profile is learned",
-          "accu_spanning": "Nominal battery voltage (W → A)",
-          "vasthouden_stroom": "Charge current for 'hold'",
-          "werkmodus_tou": "Work mode in which TOU is active",
-          "notify_service": "Notification with tomorrow's plan"
-        },
-        "data_description": {
-          "slijtage_eur_kwh": "Higher = fewer cycles.",
-          "saldering_correctie": "Normally 0.",
-          "teruglever_opslag": "Frank: market price + €0.0182 from 2027.",
-          "pv_factor": "< 1 = more conservative than forecast.",
-          "vasthouden_stroom": "0 A in a charge slot = battery idle (Solis).",
-          "werkmodus_tou": "Leave unchanged if the inverter is already in TOU mode."
+        "description": "Changes apply immediately; the plan is recalculated after saving.",
+        "sections": {
+          "accu": {
+            "name": "Battery",
+            "description": "Physical limits of the battery and inverter. These determine how much energy the plan can move per quarter and how much each kWh costs in losses and wear.",
+            "data": {
+              "capaciteit_kwh": "Usable battery capacity",
+              "min_soc": "Minimum SOC",
+              "max_soc": "Maximum SOC",
+              "max_laad_w": "Maximum charge power",
+              "max_ontlaad_w": "Maximum discharge power",
+              "rendement_laden": "Charge efficiency (AC → battery)",
+              "rendement_ontladen": "Discharge efficiency (battery → AC)",
+              "slijtage_eur_kwh": "Battery wear cost per discharged kWh"
+            },
+            "data_description": {
+              "capaciteit_kwh": "Total capacity in kWh that the SOC percentage refers to (Dyness PowerBrick Plus: 16 kWh).",
+              "min_soc": "The plan never discharges below this SOC. Keep it at or above the overdischarge SOC set in the inverter, otherwise the inverter stops earlier than planned.",
+              "max_soc": "The plan never charges above this SOC. Lower it (e.g. 90 %) if you want to spare the battery.",
+              "max_laad_w": "Charge power used when the plan charges from grid and/or solar. RHI-3.6K-48ES-5G: 3000 W.",
+              "max_ontlaad_w": "Discharge power used when the plan discharges to the house and the grid. RHI-3.6K-48ES-5G: 3000 W.",
+              "rendement_laden": "Share of AC energy that ends up in the battery. Together with the discharge efficiency this gives the round-trip efficiency (95 % × 95 % ≈ 90 %).",
+              "rendement_ontladen": "Share of stored energy that comes back out as AC energy.",
+              "slijtage_eur_kwh": "Cost added to every discharged kWh to account for battery ageing (purchase price ÷ (cycles × capacity)). Higher value = fewer cycles: the plan only charges/discharges when the price difference covers this cost. Default € 0.03."
+            }
+          },
+          "prijzen": {
+            "name": "Prices and feed-in",
+            "description": "How electricity you export to the grid is valued. This decides whether discharging to the grid during expensive morning or evening peaks pays off.",
+            "data": {
+              "saldering": "Net metering (salderingsregeling)",
+              "saldering_correctie": "Feed-in deduction while net metering",
+              "teruglever_opslag": "Feed-in premium without net metering",
+              "eindwaarde_factor": "Value of remaining charge at the end of the plan"
+            },
+            "data_description": {
+              "saldering": "Automatic: until 31-12-2026 exported energy is worth the full import price of that quarter (net metering); from 1-1-2027 market price + premium. Decided per quarter, so the turn of the year is handled correctly. Choose 'Never' if you export more than you import over a year (excess is not netted).",
+              "saldering_correctie": "Amount subtracted from the import price to get the feed-in value while net metering applies. Normally 0.",
+              "teruglever_opslag": "Amount added to the market price for exported energy once net metering has ended. Frank Energie: € 0.0182/kWh.",
+              "eindwaarde_factor": "Energy still in the battery at the end of the known prices is valued at the 75th-percentile price of the last 24 hours × this factor (never more than the cheapest price in the last 4 hours). Higher = keep more charge for the next day; lower = discharge more before the horizon ends."
+            }
+          },
+          "voorspelling": {
+            "name": "Forecasts",
+            "description": "Corrections for the solar and consumption forecasts the plan is based on.",
+            "data": {
+              "pv_factor": "Solar forecast correction factor",
+              "verbruik_fallback_w": "Consumption used before the profile is learned"
+            },
+            "data_description": {
+              "pv_factor": "The solar forecast is multiplied by this factor. Below 1 = more cautious (less grid charging because less sun is expected to fill the battery). Default 0.9.",
+              "verbruik_fallback_w": "Average household consumption in W used for hours that have not been measured yet. After a few days the learned profile takes over."
+            }
+          },
+          "omvormer": {
+            "name": "Inverter control",
+            "description": "How the plan is translated into Solis Time-Charging settings.",
+            "data": {
+              "accu_spanning": "Nominal battery voltage",
+              "vasthouden_stroom": "Charge current while holding",
+              "werkmodus_tou": "Storage Mode to use while charging/discharging"
+            },
+            "data_description": {
+              "accu_spanning": "Used to convert power to the Time-Charging current (3000 W ÷ 51.2 V = 58 A). Dyness 48 V LFP: 51.2 V.",
+              "vasthouden_stroom": "Time-Charging Charge Current written during 'Hold'. With 0 A in an active charge slot the Solis keeps the battery idle: no charging and no discharging. Verify this once on your inverter.",
+              "werkmodus_tou": "Storage Mode the planner selects when it charges, holds or discharges, e.g. **Self-Use + TOU**. Choose 'Don't change' if the inverter is already permanently in a TOU mode. Charging from the grid also requires **Allow Grid to Charge the Battery** to be on."
+            }
+          },
+          "meldingen": {
+            "name": "Notifications",
+            "description": "Optional daily message with tomorrow's plan.",
+            "data": {
+              "notify_service": "Send tomorrow's plan to"
+            },
+            "data_description": {
+              "notify_service": "Notify service (e.g. your phone via `notify.mobile_app_…`). As soon as Frank publishes tomorrow's prices (around 13:00–14:00) you receive the planned charge, hold and discharge blocks and the expected saving."
+            }
+          }
         }
       },
       "bronnen": {
-        "title": "Sources",
+        "title": "Data sources",
+        "description": "Select the sensors the planner reads. Suggested entities are pre-filled when they exist.\n\nThe planner uses today's and tomorrow's 15-minute prices, the solar forecast and your learned consumption to choose for every quarter whether the battery should run in self-consumption, hold, charge or discharge.",
         "data": {
-          "soc_entity": "Battery state of charge (%)",
-          "verbruik_entity": "House load power (W, excluding battery)",
-          "prijs_vandaag_entity": "Frank prices today",
-          "prijs_morgen_entity": "Frank prices tomorrow",
-          "pv_rest_vandaag_entity": "PV forecast remaining today (kWh)",
-          "pv_morgen_entity": "PV forecast tomorrow (kWh)",
-          "solcast_vandaag_entity": "Solcast today (optional, preferred)",
-          "solcast_morgen_entity": "Solcast tomorrow (optional)"
+          "soc_entity": "Battery SOC",
+          "verbruik_entity": "Household load power",
+          "prijs_vandaag_entity": "Frank prices – today",
+          "prijs_morgen_entity": "Frank prices – tomorrow",
+          "pv_rest_vandaag_entity": "Solar forecast – remaining today",
+          "pv_morgen_entity": "Solar forecast – tomorrow",
+          "solcast_vandaag_entity": "Solcast forecast – today (optional)",
+          "solcast_morgen_entity": "Solcast forecast – tomorrow (optional)"
+        },
+        "data_description": {
+          "soc_entity": "Current state of charge of the battery in %. Solis Modbus: **Battery SOC** (e.g. `sensor.pv_omvormer_battery_soc`).",
+          "verbruik_entity": "Power consumed by the house in W, excluding battery charging/discharging. Solis Modbus: **Household load power**. Used to learn your consumption per hour (separate profiles for weekdays and weekends).",
+          "prijs_vandaag_entity": "Frank Quarter Prices sensor with today's 15-minute prices in its `prices` attribute (e.g. `sensor.frank_prices_today`). Not the current-price sensor.",
+          "prijs_morgen_entity": "Frank Quarter Prices sensor with tomorrow's prices (e.g. `sensor.frank_prices_tomorrow`). Frank publishes these around 13:00–14:00; as soon as they arrive the plan is recalculated for the full horizon.",
+          "pv_rest_vandaag_entity": "Expected solar production for the rest of today in kWh or Wh. Forecast.Solar: **Estimated energy production - remaining today**. Spread over the remaining quarters using the sun's position.",
+          "pv_morgen_entity": "Expected solar production for tomorrow in kWh or Wh. Forecast.Solar: **Estimated energy production - tomorrow**.",
+          "solcast_vandaag_entity": "Only if you use Solcast: the sensor with the `detailedForecast` attribute for today. When filled in, Solcast is used instead of the Forecast.Solar sensors above.",
+          "solcast_morgen_entity": "Only if you use Solcast: the sensor with the `detailedForecast` attribute for tomorrow."
         }
       },
       "omvormer": {
-        "title": "Inverter (Solis TOU)",
+        "title": "Inverter (Solis Time-Charging)",
+        "description": "Select the Solis Modbus Time-Charging entities for slot 1. Tip: in Developer tools → States, filter on `time_charging`.\n\nThe planner only uses slot 1 and only writes a value when it actually changes. Nothing is sent to the inverter until you switch on **Control inverter** on the Battery Planner device.",
         "data": {
-          "laad_start_entity": "TOU charge slot 1 – start",
-          "laad_eind_entity": "TOU charge slot 1 – end",
-          "ontlaad_start_entity": "TOU discharge slot 1 – start",
-          "ontlaad_eind_entity": "TOU discharge slot 1 – end",
-          "laad_stroom_entity": "TOU charge current (A)",
-          "ontlaad_stroom_entity": "TOU discharge current (A)",
-          "werkmodus_entity": "Inverter work mode (optional)"
+          "laad_start_entity": "Time-Charging Charge Start (Slot 1)",
+          "laad_eind_entity": "Time-Charging Charge End (Slot 1)",
+          "ontlaad_start_entity": "Time-Charging Discharge Start (Slot 1)",
+          "ontlaad_eind_entity": "Time-Charging Discharge End (Slot 1)",
+          "laad_stroom_entity": "Time-Charging Charge Current",
+          "ontlaad_stroom_entity": "Time-Charging Discharge Current",
+          "werkmodus_entity": "Storage Mode (optional)"
+        },
+        "data_description": {
+          "laad_start_entity": "Solis Modbus time entity for the start of charge slot 1. The planner writes the start of the current quarter here when it wants to charge or hold the battery, and 00:00 when the slot is not used.",
+          "laad_eind_entity": "Solis Modbus time entity for the end of charge slot 1. The planner writes the end of the planned charge/hold block here (at most 23:59; the next block continues after midnight).",
+          "ontlaad_start_entity": "Solis Modbus time entity for the start of discharge slot 1. Used when the plan discharges the battery to the house and the grid.",
+          "ontlaad_eind_entity": "Solis Modbus time entity for the end of discharge slot 1.",
+          "laad_stroom_entity": "Solis Modbus number entity for the time-charging charge current in A. Set to max charge power ÷ battery voltage when charging, and to the 'hold' current (normally 0 A) when holding.",
+          "ontlaad_stroom_entity": "Solis Modbus number entity for the time-charging discharge current in A. Set to max discharge power ÷ battery voltage when discharging.",
+          "werkmodus_entity": "Solis Modbus **Storage Mode** select. Only needed if the planner should switch the inverter to a TOU mode itself (choose which one under Configure → Settings). Leave empty if your inverter is permanently in a TOU mode such as **Self-Use + TOU**."
         }
       }
     },
     "error": {
-      "soc_bereik": "Min SOC must be below max SOC",
-      "niet_gevonden": "Entity not found",
-      "geen_getal": "This sensor is not numeric",
-      "geen_prijzen": "This sensor has no 'prices' attribute"
+      "niet_gevonden": "Entity not found.",
+      "geen_getal": "This sensor does not have a numeric value. Choose the Battery SOC sensor (%).",
+      "geen_prijzen": "This sensor has no 'prices' attribute. Choose the Frank Quarter Prices sensor for today's prices (e.g. sensor.frank_prices_today), not the current-price sensor.",
+      "soc_bereik": "Minimum SOC must be lower than maximum SOC."
+    }
+  },
+  "selector": {
+    "saldering": {
+      "options": {
+        "auto": "Automatic – net metering until end of 2026, then market price + premium",
+        "aan": "Always net metering",
+        "uit": "Never – market price + premium"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "modus": {
+        "name": "Mode",
+        "state": {
+          "zelfverbruik": "Self-consumption",
+          "vasthouden": "Hold",
+          "laden": "Charge",
+          "ontladen": "Discharge"
+        }
+      },
+      "besparing": {
+        "name": "Expected saving"
+      },
+      "volgende_actie": {
+        "name": "Next action"
+      },
+      "doel_soc": {
+        "name": "Target SOC end of block"
+      },
+      "verbruiksprofiel": {
+        "name": "Learned consumption last quarter"
+      }
+    },
+    "switch": {
+      "sturing": {
+        "name": "Control inverter"
+      }
+    },
+    "button": {
+      "herbereken": {
+        "name": "Recalculate plan"
+      }
     }
   }
 }
