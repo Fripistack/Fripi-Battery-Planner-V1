@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.1.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.2.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -162,6 +162,21 @@ Twee dingen moet je één keer zelf testen:
 - **Vasthouden:** controleer op een zonnig uur dat de accu met een laadslot op 0 A echt stilstaat.
 - **Laden uit het net:** dat werkt alleen als *Allow grid charging* aan staat op de omvormer.
 
+## Warmtepomp (nieuw in 5.2.0, eerste versie)
+
+Optioneel stuurt de integratie ook de **streeftemperatuur van het buffervat** van de warmtepomp (bijv. via Tuya), op basis van dezelfde Frank-prijzen:
+
+| situatie | streeftemperatuur |
+|---|---|
+| kwartier hoort bij de goedkoopste 25 % van de komende 24 uur | normaal **+ 5 K** (boost) |
+| zonne-overschot ≥ 1500 W én thuisaccu ≥ 90 % | normaal **+ 5 K** (boost) |
+| kwartier hoort bij de duurste 25 % | normaal **− 5 K** (verlaagd), behalve als de thermostaat warmte vraagt |
+| anders | normaal (45 °C, optioneel met stooklijn) |
+
+Altijd binnen min/max (35–55 °C) en hooguit één wijziging per 30 minuten (beschermt tegen pendelen en te veel Tuya-opdrachten).
+
+**Instellen:** Configureren → **Heat pump**. Kies de Tuya-entiteit voor de buffervat-streeftemperatuur (climate, water_heater of number) en optioneel de buffertemperatuur, buitentemperatuur, de T6-thermostaat en het zonvermogen. De sensor **Heat pump target temperature** laat daarna zien wat de planner zou doen en waarom. Pas met de schakelaar **Control heat pump** wordt er echt geschreven. Zet je die uit, dan gaat de streeftemperatuur terug naar normaal.
+
 ## Saldering
 
 - **Automatisch** (standaard): t/m 31-12-2026 is terugleveren evenveel waard als de afnameprijs van dat kwartier, vanaf 1-1-2027 marktprijs + opslag (€ 0,0182). Dit wordt per kwartier bepaald, dus ook de jaarwissel gaat goed.
@@ -205,6 +220,10 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.2.0
+- Nieuw: warmtepompsturing (eerste versie). Verschuift de streeftemperatuur van het buffervat naar goedkope en zonnige uren en verlaagt hem in dure uren; respecteert de warmtevraag van de thermostaat, min/max-temperatuur en een minimale tijd tussen wijzigingen. Eigen schakelaar *Control heat pump* en sensor *Heat pump target temperature*.
+- Dashboard: sectie Heat pump op het tabblad Overview.
 
 ### 5.1.1
 - Kant-en-klaar dashboard (`dashboard/battery_planner_dashboard.yaml`) met de tabbladen Overview, Frank prices (met optimal cheap/expensive periods) en Inverter (temperaturen, accu-, net- en PV-gegevens als informatielijst).

@@ -16,8 +16,14 @@ from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from . import optimizer
+from . import optimizer, warmtepomp
 from .const import (
+    CONF_WP_BUFFER,
+    CONF_WP_BUITEN,
+    CONF_WP_MIN_MINUTEN,
+    CONF_WP_PV,
+    CONF_WP_SETPOINT,
+    CONF_WP_THERMOSTAAT,
     CONF_LAAD_EIND,
     CONF_LAAD_START,
     CONF_LAAD_STROOM,
@@ -68,6 +74,9 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(hass, _LOGGER, config_entry=entry, name=DOMAIN, update_interval=None)
         self.conf: dict[str, Any] = {**STANDAARD_INSTELLINGEN, **entry.data, **entry.options}
         self.actief = False
+        self.wp_actief = False
+        self._wp_laatste_schrijf: datetime | None = None
+        self.wp_laatste_actie: str | None = None
         self.profiel = VerbruiksProfiel(hass, entry.entry_id, float(self.conf["verbruik_fallback_w"]))
         self._lock = asyncio.Lock()
         self._unsubs: list = []
@@ -137,6 +146,11 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             resultaat["sturing_actief"] = self.actief
             if self.actief:
                 await self._stuur(resultaat)
+            try:
+                resultaat["warmtepomp"] = await self._warmtepomp(nu, resultaat)
+            except Exception:  # noqa: BLE001 - warmtepomp mag de accusturing nooit breken
+                _LOGGER.exception("Batterij Planner: fout in warmtepompsturing")
+                resultaat["warmtepomp"] = {"fout": "Unexpected error, see the Home Assistant log"}
             if self._melding_gepland and "fout" not in resultaat:
                 self._melding_gepland = False
                 await self._meld(resultaat)
@@ -323,3 +337,105 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._laatste_melding = vandaag
         except HomeAssistantError as err:
             _LOGGER.error("Batterij Planner: melding versturen mislukt: %s", err)
+
+    # ------------------------------------------------------------------ warmtepomp
+    def _wp_instellingen(self) -> warmtepomp.WpInstellingen:
+        namen = {f.name for f in fields(warmtepomp.WpInstellingen)}
+        waarden: dict[str, Any] = {}
+        for k, v in self.conf.items():
+            if k.startswith("wp_") and k[3:] in namen and v is not None:
+                waarden[k[3:]] = bool(v) if k == "wp_niet_verlagen_bij_vraag" else float(v)
+        return warmtepomp.WpInstellingen(**waarden)
+
+    def _wp_huidig_setpoint(self, entity_id: str) -> float | None:
+        st = self.hass.states.get(entity_id)
+        if st is None:
+            return None
+        if entity_id.startswith(("climate.", "water_heater.")):
+            try:
+                return float(st.attributes.get("temperature"))
+            except (TypeError, ValueError):
+                return None
+        return _float(st)
+
+    async def _wp_schrijf(self, entity_id: str, temp: float) -> None:
+        domein = entity_id.split(".", 1)[0]
+        if domein in ("climate", "water_heater"):
+            await self.hass.services.async_call(
+                domein, "set_temperature", {"entity_id": entity_id, "temperature": temp}, blocking=True
+            )
+        else:
+            await self.hass.services.async_call(
+                "number", "set_value", {"entity_id": entity_id, "value": temp}, blocking=True
+            )
+
+    async def _warmtepomp(self, nu: datetime, res: dict[str, Any]) -> dict[str, Any] | None:
+        setpoint_e = self.conf.get(CONF_WP_SETPOINT)
+        if not setpoint_e:
+            return None
+        inst = self._wp_instellingen()
+        slots = res.get("slots") or []
+        prijzen = [s[3] for s in slots[:96]]
+        huidige_prijs = prijzen[0] if prijzen else None
+
+        buiten = _float(self.hass.states.get(self.conf.get(CONF_WP_BUITEN) or ""))
+        pv = _float(self.hass.states.get(self.conf.get(CONF_WP_PV) or ""))
+        verbruik = _float(self.hass.states.get(self.conf.get(CONF_VERBRUIK) or ""))
+        overschot = (pv - verbruik) if pv is not None and verbruik is not None else None
+        soc = _float(self.hass.states.get(self.conf.get(CONF_SOC) or ""))
+        thermostaat = self.hass.states.get(self.conf.get(CONF_WP_THERMOSTAAT) or "")
+        vraag = None
+        if thermostaat is not None:
+            vraag = thermostaat.attributes.get("hvac_action") == "heating"
+
+        besluit = warmtepomp.bepaal(inst, huidige_prijs, prijzen, buiten, overschot, soc, vraag)
+        huidig = self._wp_huidig_setpoint(setpoint_e)
+        uit = {
+            "doel": besluit.doel,
+            "stand": besluit.stand,
+            "reden": besluit.reden,
+            "basis": round(besluit.basis, 1),
+            "prijs_rang": None if besluit.prijs_rang is None else round(besluit.prijs_rang, 2),
+            "huidig_setpoint": huidig,
+            "buffer_temp": _float(self.hass.states.get(self.conf.get(CONF_WP_BUFFER) or "")),
+            "buiten_temp": buiten,
+            "zon_overschot_w": None if overschot is None else round(overschot),
+            "warmtevraag": vraag,
+            "sturing_actief": self.wp_actief,
+            "laatste_actie": self.wp_laatste_actie,
+        }
+        if not self.wp_actief or huidig is None:
+            return uit
+        if abs(huidig - besluit.doel) < 0.5:
+            return uit
+        min_min = float(self.conf.get(CONF_WP_MIN_MINUTEN) or 0)
+        if self._wp_laatste_schrijf and (nu - self._wp_laatste_schrijf) < timedelta(minutes=min_min):
+            uit["wacht_tot"] = (self._wp_laatste_schrijf + timedelta(minutes=min_min)).isoformat()
+            return uit
+        try:
+            await self._wp_schrijf(setpoint_e, besluit.doel)
+            self._wp_laatste_schrijf = nu
+            self.wp_laatste_actie = f"{nu:%H:%M} {huidig:g} → {besluit.doel:g} °C ({besluit.stand})"
+            uit["laatste_actie"] = self.wp_laatste_actie
+            _LOGGER.info("Batterij Planner warmtepomp: %s – %s", self.wp_laatste_actie, besluit.reden)
+        except (HomeAssistantError, ValueError) as err:
+            _LOGGER.error("Batterij Planner: warmtepomp-setpoint schrijven mislukt: %s", err)
+        return uit
+
+    async def async_wp_normaal(self) -> None:
+        """Bij uitzetten van de warmtepompsturing: terug naar de basis-streeftemperatuur."""
+        setpoint_e = self.conf.get(CONF_WP_SETPOINT)
+        if not setpoint_e:
+            return
+        inst = self._wp_instellingen()
+        buiten = _float(self.hass.states.get(self.conf.get(CONF_WP_BUITEN) or ""))
+        basis = warmtepomp.bepaal(inst, None, [], buiten).doel
+        huidig = self._wp_huidig_setpoint(setpoint_e)
+        if huidig is None or abs(huidig - basis) < 0.5:
+            return
+        try:
+            await self._wp_schrijf(setpoint_e, basis)
+            self._wp_laatste_schrijf = dt_util.now()
+            self.wp_laatste_actie = f"{dt_util.now():%H:%M} {huidig:g} → {basis:g} °C (control switched off)"
+        except (HomeAssistantError, ValueError) as err:
+            _LOGGER.error("Batterij Planner: warmtepomp-setpoint schrijven mislukt: %s", err)

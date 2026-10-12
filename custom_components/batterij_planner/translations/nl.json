@@ -66,7 +66,8 @@
         "menu_options": {
           "instellingen": "Settings – battery, prices, forecasts, inverter control, notifications",
           "bronnen": "Data sources – SOC, consumption, prices and solar forecast sensors",
-          "omvormer": "Inverter entities – Solis Time-Charging slot 1 and Storage Mode"
+          "omvormer": "Inverter entities – Solis Time-Charging slot 1 and Storage Mode",
+          "warmtepomp": "Heat pump – shift buffer tank heating to cheap and sunny hours"
         }
       },
       "instellingen": {
@@ -196,13 +197,70 @@
           "ontlaad_stroom_entity": "Solis Modbus number entity for the time-charging discharge current in A. Set to max discharge power ÷ battery voltage when discharging.",
           "werkmodus_entity": "Solis Modbus **Storage Mode** select. Only needed if the planner should switch the inverter to a TOU mode itself (choose which one under Configure → Settings). Leave empty if your inverter is permanently in a TOU mode such as **Self-Use + TOU**."
         }
+      },
+      "warmtepomp": {
+        "title": "Heat pump (buffer tank setpoint)",
+        "description": "Optional. Raises the buffer tank setpoint of the heat pump when electricity is cheap or there is a solar surplus, and lowers it when electricity is expensive, so the heat pump runs at the cheapest moments. Nothing is written until you switch on **Control heat pump** on the Battery Planner device; until then the sensor **Heat pump target temperature** only shows what it would do. Leave the setpoint entity empty to disable this feature.",
+        "sections": {
+          "apparaten": {
+            "name": "Devices",
+            "description": "Entities of the heat pump (Tuya) and the room thermostat.",
+            "data": {
+              "wp_setpoint_entity": "Buffer tank setpoint",
+              "wp_buffer_temp_entity": "Buffer tank temperature (optional)",
+              "wp_buiten_temp_entity": "Outdoor temperature (optional)",
+              "wp_thermostaat_entity": "Room thermostat (optional)",
+              "wp_pv_vermogen_entity": "Solar power (optional)"
+            },
+            "data_description": {
+              "wp_setpoint_entity": "The Tuya entity that sets the target temperature of the 50 L buffer tank: a climate, water_heater or number entity. The planner writes the target temperature here.",
+              "wp_buffer_temp_entity": "Actual buffer tank temperature. Only shown for information on the dashboard.",
+              "wp_buiten_temp_entity": "Outdoor temperature sensor (heat pump, weather station or weather integration sensor). Needed for the heating curve.",
+              "wp_thermostaat_entity": "Resideo/Honeywell T6 climate entity. When it reports hvac_action 'heating' (heat demand → circulation pump on), the setpoint is not lowered during expensive hours (see 'Don't lower during heat demand').",
+              "wp_pv_vermogen_entity": "Solar power in W (Solis Modbus: Total PV Power). Solar surplus = solar power − household load power."
+            }
+          },
+          "regeling": {
+            "name": "Control",
+            "description": "How far and when the buffer tank setpoint is shifted.",
+            "data": {
+              "wp_basis_temp": "Normal setpoint",
+              "wp_verhoging": "Raise when cheap or sunny",
+              "wp_verlaging": "Lower when expensive",
+              "wp_min_temp": "Minimum setpoint",
+              "wp_max_temp": "Maximum setpoint",
+              "wp_goedkoop_aandeel": "Cheap = cheapest share of the next 24 h",
+              "wp_duur_aandeel": "Expensive = most expensive share of the next 24 h",
+              "wp_stooklijn": "Heating curve",
+              "wp_pv_overschot_w": "Solar surplus for raising",
+              "wp_pv_min_soc": "Only use solar surplus above home battery SOC",
+              "wp_niet_verlagen_bij_vraag": "Don't lower during heat demand",
+              "wp_min_minuten": "Minimum time between changes"
+            },
+            "data_description": {
+              "wp_basis_temp": "Buffer tank setpoint at average prices (at 15 °C outdoors when a heating curve is used).",
+              "wp_verhoging": "Kelvin added during cheap quarters or solar surplus. The buffer and the house store the extra heat. Note: every extra °C costs roughly 2–3 % heat pump efficiency (COP), so keep this modest.",
+              "wp_verlaging": "Kelvin subtracted during expensive quarters, so the heat pump pauses and the buffer and house use stored heat.",
+              "wp_min_temp": "The setpoint never goes below this (comfort limit). Make sure the radiators/floor heating still get warm enough at this temperature.",
+              "wp_max_temp": "The setpoint never goes above this (heat pump and system limit).",
+              "wp_goedkoop_aandeel": "A quarter counts as cheap when its price is among this share of the cheapest quarters of the next 24 hours (based on the Frank prices also used for the battery).",
+              "wp_duur_aandeel": "A quarter counts as expensive when its price is among this share of the most expensive quarters of the next 24 hours.",
+              "wp_stooklijn": "Optional weather compensation: Kelvin added to the normal setpoint per °C the outdoor temperature is below 15 °C. 0 = off (use the heat pump's own curve).",
+              "wp_pv_overschot_w": "Raise the setpoint when solar power minus house consumption is at least this many watts.",
+              "wp_pv_min_soc": "Solar surplus is only used for the heat pump once the home battery is at least this full, so the battery is filled first.",
+              "wp_niet_verlagen_bij_vraag": "When on, the setpoint is not lowered while the room thermostat is calling for heat, to protect comfort.",
+              "wp_min_minuten": "Minimum time between two setpoint changes, to avoid short cycling of the heat pump and too many Tuya cloud commands."
+            }
+          }
+        }
       }
     },
     "error": {
       "niet_gevonden": "Entity not found.",
       "geen_getal": "This sensor does not have a numeric value. Choose the Battery SOC sensor (%).",
       "geen_prijzen": "This sensor has no 'prices' attribute. Choose the Frank Quarter Prices sensor for today's prices (e.g. sensor.frank_prices_today), not the current-price sensor.",
-      "soc_bereik": "Minimum SOC must be lower than maximum SOC."
+      "soc_bereik": "Minimum SOC must be lower than maximum SOC.",
+      "wp_bereik": "Minimum setpoint must be lower than maximum setpoint."
     }
   },
   "selector": {
@@ -236,11 +294,17 @@
       },
       "verbruiksprofiel": {
         "name": "Learned consumption last quarter"
+      },
+      "wp_doel": {
+        "name": "Heat pump target temperature"
       }
     },
     "switch": {
       "sturing": {
         "name": "Control inverter"
+      },
+      "wp_sturing": {
+        "name": "Control heat pump"
       }
     },
     "button": {

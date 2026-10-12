@@ -31,7 +31,14 @@ from .const import (
     CONF_VERBRUIK,
     CONF_WERKMODUS,
     CONF_WERKMODUS_TOU,
+    CONF_WP_BUFFER,
+    CONF_WP_BUITEN,
+    CONF_WP_MIN_MINUTEN,
+    CONF_WP_PV,
+    CONF_WP_SETPOINT,
+    CONF_WP_THERMOSTAAT,
     DOMAIN,
+    WP_ENTITY_KEYS,
     GEEN_MELDING,
     NIET_WIJZIGEN,
     OMVORMER_KEYS,
@@ -50,6 +57,11 @@ DOMEIN_PER_KEY = {
     CONF_LAAD_START: "time", CONF_LAAD_EIND: "time", CONF_ONTLAAD_START: "time",
     CONF_ONTLAAD_EIND: "time", CONF_LAAD_STROOM: "number", CONF_ONTLAAD_STROOM: "number",
     CONF_WERKMODUS: "select",
+    CONF_WP_SETPOINT: ["number", "climate", "water_heater"],
+    CONF_WP_BUFFER: "sensor",
+    CONF_WP_BUITEN: "sensor",
+    CONF_WP_THERMOSTAAT: "climate",
+    CONF_WP_PV: "sensor",
 }
 
 
@@ -189,6 +201,32 @@ def _instellingen_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Sch
     return vol.Schema(schema)
 
 
+def _wp_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Schema:
+    w = {**STANDAARD_INSTELLINGEN, **{k: v for k, v in huidig.items() if v is not None}}
+    regeling = vol.Schema(
+        {
+            vol.Required("wp_basis_temp", default=w["wp_basis_temp"]): _num(20, 70, 0.5, "°C"),
+            vol.Required("wp_verhoging", default=w["wp_verhoging"]): _num(0, 20, 0.5, "K"),
+            vol.Required("wp_verlaging", default=w["wp_verlaging"]): _num(0, 20, 0.5, "K"),
+            vol.Required("wp_min_temp", default=w["wp_min_temp"]): _num(15, 70, 0.5, "°C"),
+            vol.Required("wp_max_temp", default=w["wp_max_temp"]): _num(20, 75, 0.5, "°C"),
+            vol.Required("wp_goedkoop_aandeel", default=w["wp_goedkoop_aandeel"]): _num(0, 50, 5, "%"),
+            vol.Required("wp_duur_aandeel", default=w["wp_duur_aandeel"]): _num(0, 50, 5, "%"),
+            vol.Required("wp_stooklijn", default=w["wp_stooklijn"]): _num(0, 3, 0.1, "K/°C"),
+            vol.Required("wp_pv_overschot_w", default=w["wp_pv_overschot_w"]): _num(0, 10000, 100, "W"),
+            vol.Required("wp_pv_min_soc", default=w["wp_pv_min_soc"]): _num(0, 100, 1, "%"),
+            vol.Required("wp_niet_verlagen_bij_vraag", default=w["wp_niet_verlagen_bij_vraag"]): selector.BooleanSelector(),
+            vol.Required(CONF_WP_MIN_MINUTEN, default=w[CONF_WP_MIN_MINUTEN]): _num(0, 240, 5, "min"),
+        }
+    )
+    return vol.Schema(
+        {
+            vol.Required("apparaten"): section(_entity_schema(hass, WP_ENTITY_KEYS, huidig), {"collapsed": False}),
+            vol.Required("regeling"): section(regeling, {"collapsed": False}),
+        }
+    )
+
+
 class BatterijPlannerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Eerste installatie: bronnen en omvormer kiezen."""
 
@@ -240,7 +278,24 @@ class BatterijPlannerOptionsFlow(OptionsFlow):
         return {**self.config_entry.data, **self.config_entry.options}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="init", menu_options=["instellingen", "bronnen", "omvormer"])
+        return self.async_show_menu(
+            step_id="init", menu_options=["instellingen", "bronnen", "omvormer", "warmtepomp"]
+        )
+
+    async def async_step_warmtepomp(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        fouten: dict[str, str] = {}
+        if user_input is not None:
+            apparaten = user_input.get("apparaten", {}) or {}
+            regeling = user_input.get("regeling", {}) or {}
+            if regeling.get("wp_min_temp", 0) >= regeling.get("wp_max_temp", 100):
+                fouten["base"] = "wp_bereik"
+            else:
+                return self.async_create_entry(
+                    data={**self.config_entry.options, **_met_lege_optionele(WP_ENTITY_KEYS, apparaten), **regeling}
+                )
+        return self.async_show_form(
+            step_id="warmtepomp", data_schema=_wp_schema(self.hass, self._huidig()), errors=fouten
+        )
 
     async def async_step_instellingen(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

@@ -101,6 +101,35 @@ views:
             grid_options: {columns: 6}
 
       - type: grid
+        cards:
+          - type: heading
+            heading: Heat pump
+            icon: mdi:heat-pump
+          - type: tile
+            entity: sensor.batterij_planner_heat_pump_target_temperature
+            name: Buffer target
+            grid_options: {columns: 6}
+          - type: tile
+            entity: switch.batterij_planner_control_heat_pump
+            name: Control heat pump
+            grid_options: {columns: 6}
+          - type: markdown
+            content: |
+              {% set e = 'sensor.batterij_planner_heat_pump_target_temperature' %}
+              {% set a = states[e].attributes if states[e] is defined else {} %}
+              {% set stand = {'boost': '🔥 Raised', 'normaal': '➖ Normal', 'verlaagd': '❄️ Lowered'} %}
+              **{{ stand.get(a.get('stand'), '–') }}** – {{ a.get('reden', 'not configured') }}
+
+              | | |
+              |:--|--:|
+              | Setpoint now | {{ a.get('huidig_setpoint', '–') }} °C |
+              | Buffer temperature | {{ a.get('buffer_temp', '–') }} °C |
+              | Outdoor temperature | {{ a.get('buiten_temp', '–') }} °C |
+              | Solar surplus | {{ a.get('zon_overschot_w', '–') }} W |
+              | Thermostat calls for heat | {{ 'yes' if a.get('warmtevraag') else 'no' }} |
+              | Last change | {{ a.get('laatste_actie') or '–' }} |
+
+      - type: grid
         column_span: 3
         cards:
           - type: heading

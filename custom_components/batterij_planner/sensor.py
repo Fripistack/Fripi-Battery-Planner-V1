@@ -30,7 +30,8 @@ async def async_setup_entry(
 ) -> None:
     c = entry.runtime_data
     async_add_entities(
-        [ModusSensor(c), BesparingSensor(c), VolgendeActieSensor(c), DoelSocSensor(c), VerbruikSensor(c)]
+        [ModusSensor(c), BesparingSensor(c), VolgendeActieSensor(c), DoelSocSensor(c), VerbruikSensor(c),
+         WarmtepompDoelSensor(c)]
     )
 
 
@@ -140,3 +141,29 @@ class VerbruikSensor(BatterijPlannerEntity, SensorEntity):
         p = self.coordinator.profiel
         return {"profiel_werkdag": p.werkdag, "profiel_weekend": p.weekend,
                 "metingen_werkdag": p.n_werkdag, "metingen_weekend": p.n_weekend}
+
+
+class WarmtepompDoelSensor(BatterijPlannerEntity, SensorEntity):
+    """Gewenste streeftemperatuur van het buffervat + waarom."""
+
+    _attr_translation_key = "wp_doel"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = "°C"
+    _attr_icon = "mdi:heat-pump-outline"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "wp_doel")
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool((self.coordinator.data or {}).get("warmtepomp"))
+
+    @property
+    def native_value(self) -> float | None:
+        return ((self.coordinator.data or {}).get("warmtepomp") or {}).get("doel")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        wp = dict((self.coordinator.data or {}).get("warmtepomp") or {})
+        wp.pop("doel", None)
+        return wp

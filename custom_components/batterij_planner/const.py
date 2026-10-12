@@ -30,6 +30,21 @@ CONF_WERKMODUS_TOU = "werkmodus_tou"
 CONF_VASTHOUDEN_STROOM = "vasthouden_stroom"
 CONF_SPANNING = "accu_spanning"
 CONF_NOTIFY = "notify_service"
+# ---- warmtepomp (options)
+CONF_WP_SETPOINT = "wp_setpoint_entity"
+CONF_WP_BUFFER = "wp_buffer_temp_entity"
+CONF_WP_BUITEN = "wp_buiten_temp_entity"
+CONF_WP_THERMOSTAAT = "wp_thermostaat_entity"
+CONF_WP_PV = "wp_pv_vermogen_entity"
+CONF_WP_MIN_MINUTEN = "wp_min_minuten"
+WP_ENTITY_KEYS = [CONF_WP_SETPOINT, CONF_WP_BUFFER, CONF_WP_BUITEN, CONF_WP_THERMOSTAAT, CONF_WP_PV]
+# instellingen met prefix wp_ -> velden van warmtepomp.WpInstellingen
+WP_INSTELLING_KEYS = [
+    "wp_basis_temp", "wp_verhoging", "wp_verlaging", "wp_min_temp", "wp_max_temp",
+    "wp_goedkoop_aandeel", "wp_duur_aandeel", "wp_stooklijn", "wp_pv_overschot_w",
+    "wp_pv_min_soc", "wp_niet_verlagen_bij_vraag", CONF_WP_MIN_MINUTEN,
+]
+
 NIET_WIJZIGEN = "__niet_wijzigen__"
 GEEN_MELDING = "__geen__"
 
@@ -58,6 +73,7 @@ SUGGESTIES = {
     CONF_LAAD_STROOM: "number.pv_omvormer_time_charging_charge_current",
     CONF_ONTLAAD_STROOM: "number.pv_omvormer_time_charging_discharge_current",
     CONF_WERKMODUS: "select.pv_omvormer_work_mode",
+    CONF_WP_PV: "sensor.pv_omvormer_total_pv_power",
 }
 
 # Standaardwaarden voor de rekeninstellingen (namen = velden van optimizer.Instellingen)
@@ -80,4 +96,16 @@ STANDAARD_INSTELLINGEN: dict[str, float | str] = {
     CONF_VASTHOUDEN_STROOM: 0.0,
     CONF_WERKMODUS_TOU: NIET_WIJZIGEN,
     CONF_NOTIFY: GEEN_MELDING,
+    "wp_basis_temp": 45.0,
+    "wp_verhoging": 5.0,
+    "wp_verlaging": 5.0,
+    "wp_min_temp": 35.0,
+    "wp_max_temp": 55.0,
+    "wp_goedkoop_aandeel": 25.0,
+    "wp_duur_aandeel": 25.0,
+    "wp_stooklijn": 0.0,
+    "wp_pv_overschot_w": 1500.0,
+    "wp_pv_min_soc": 90.0,
+    "wp_niet_verlagen_bij_vraag": True,
+    CONF_WP_MIN_MINUTEN: 30.0,
 }

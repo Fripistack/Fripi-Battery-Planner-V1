@@ -15,7 +15,7 @@ from .entity import BatterijPlannerEntity
 async def async_setup_entry(
     hass: HomeAssistant, entry: BatterijPlannerConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities([SturingSwitch(entry.runtime_data)])
+    async_add_entities([SturingSwitch(entry.runtime_data), WarmtepompSwitch(entry.runtime_data)])
 
 
 class SturingSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
@@ -47,3 +47,34 @@ class SturingSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
         self.coordinator.actief = False
         self.async_write_ha_state()
         await self.coordinator.async_naar_zelfverbruik()
+
+
+class WarmtepompSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
+    """Uit = alleen adviseren, aan = streeftemperatuur buffervat aansturen."""
+
+    _attr_translation_key = "wp_sturing"
+    _attr_icon = "mdi:heat-pump"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "wp_sturing")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        vorig = await self.async_get_last_state()
+        if vorig is not None and vorig.state == "on":
+            self.coordinator.wp_actief = True
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.wp_actief
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        self.coordinator.wp_actief = True
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        self.coordinator.wp_actief = False
+        self.async_write_ha_state()
+        await self.coordinator.async_wp_normaal()
+        await self.coordinator.async_request_refresh()
