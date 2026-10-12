@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.2.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.2.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -162,20 +162,20 @@ Twee dingen moet je één keer zelf testen:
 - **Vasthouden:** controleer op een zonnig uur dat de accu met een laadslot op 0 A echt stilstaat.
 - **Laden uit het net:** dat werkt alleen als *Allow grid charging* aan staat op de omvormer.
 
-## Warmtepomp (nieuw in 5.2.0, eerste versie)
+## Warmtepomp (eerste versie)
 
-Optioneel stuurt de integratie ook de **streeftemperatuur van het buffervat** van de warmtepomp (bijv. via Tuya), op basis van dezelfde Frank-prijzen:
+Optioneel stuurt de integratie ook de **streeftemperatuur van het buffervat** van de warmtepomp (Tuya / Tuya Local), op basis van dezelfde Frank-prijzen. K (kelvin) is een temperatuurverschil: +3 K betekent 3 °C hoger dan normaal.
 
-| situatie | streeftemperatuur |
+| situatie | streeftemperatuur (standaard) |
 |---|---|
-| kwartier hoort bij de goedkoopste 25 % van de komende 24 uur | normaal **+ 5 K** (boost) |
-| zonne-overschot ≥ 1500 W én thuisaccu ≥ 90 % | normaal **+ 5 K** (boost) |
-| kwartier hoort bij de duurste 25 % | normaal **− 5 K** (verlaagd), behalve als de thermostaat warmte vraagt |
-| anders | normaal (45 °C, optioneel met stooklijn) |
+| kwartier hoort bij de goedkoopste 25 % van de komende 24 uur | normaal + 3 K → **28 °C** |
+| zonne-overschot ≥ 1500 W én thuisaccu ≥ 90 % | normaal + 3 K → **28 °C** |
+| kwartier hoort bij de duurste 25 % | normaal − 3 K → **22 °C**, behalve als de thermostaat warmte vraagt |
+| anders | normaal: **25 °C** (optioneel met stooklijn) |
 
-Altijd binnen min/max (35–55 °C) en hooguit één wijziging per 30 minuten (beschermt tegen pendelen en te veel Tuya-opdrachten).
+Altijd binnen min/max (20–35 °C) en hooguit één wijziging per 30 minuten (beschermt tegen pendelen). Stem *Normal setpoint* af op de temperatuur waarop je warmtepomp nu staat.
 
-**Instellen:** Configureren → **Heat pump**. Kies de Tuya-entiteit voor de buffervat-streeftemperatuur (climate, water_heater of number) en optioneel de buffertemperatuur, buitentemperatuur, de T6-thermostaat en het zonvermogen. De sensor **Heat pump target temperature** laat daarna zien wat de planner zou doen en waarom. Pas met de schakelaar **Control heat pump** wordt er echt geschreven. Zet je die uit, dan gaat de streeftemperatuur terug naar normaal.
+**Instellen:** Configureren → **Heat pump**. Kies de entiteit voor de buffervat-streeftemperatuur (climate, water_heater of number) en optioneel de buffertemperatuur, buitentemperatuur, de thermostaat (bijv. Resideo T6) en het zonvermogen. De sensor **Heat pump target temperature** laat zien wat de planner zou doen en waarom. Pas met de schakelaar **Control heat pump** wordt er echt geschreven. Zet je die uit, dan gaat de streeftemperatuur terug naar normaal.
 
 ## Saldering
 
@@ -220,6 +220,10 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.2.1
+- Warmtepomp: standaardwaarden afgestemd op lagetemperatuurverwarming: normaal 25 °C, +3 K / −3 K, grenzen 20–35 °C (was 45 °C, ±5 K, 35–55 °C). Een al opgeslagen instelling blijft staan.
+- Uitleg wat K (kelvin) betekent bij verhogen en verlagen.
 
 ### 5.2.0
 - Nieuw: warmtepompsturing (eerste versie). Verschuift de streeftemperatuur van het buffervat naar goedkope en zonnige uren en verlaagt hem in dure uren; respecteert de warmtevraag van de thermostaat, min/max-temperatuur en een minimale tijd tussen wijzigingen. Eigen schakelaar *Control heat pump* en sensor *Heat pump target temperature*.

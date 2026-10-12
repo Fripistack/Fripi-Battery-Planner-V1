@@ -205,11 +205,11 @@ def _wp_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Schema:
     w = {**STANDAARD_INSTELLINGEN, **{k: v for k, v in huidig.items() if v is not None}}
     regeling = vol.Schema(
         {
-            vol.Required("wp_basis_temp", default=w["wp_basis_temp"]): _num(20, 70, 0.5, "°C"),
+            vol.Required("wp_basis_temp", default=w["wp_basis_temp"]): _num(15, 70, 0.5, "°C"),
             vol.Required("wp_verhoging", default=w["wp_verhoging"]): _num(0, 20, 0.5, "K"),
             vol.Required("wp_verlaging", default=w["wp_verlaging"]): _num(0, 20, 0.5, "K"),
-            vol.Required("wp_min_temp", default=w["wp_min_temp"]): _num(15, 70, 0.5, "°C"),
-            vol.Required("wp_max_temp", default=w["wp_max_temp"]): _num(20, 75, 0.5, "°C"),
+            vol.Required("wp_min_temp", default=w["wp_min_temp"]): _num(10, 70, 0.5, "°C"),
+            vol.Required("wp_max_temp", default=w["wp_max_temp"]): _num(15, 75, 0.5, "°C"),
             vol.Required("wp_goedkoop_aandeel", default=w["wp_goedkoop_aandeel"]): _num(0, 50, 5, "%"),
             vol.Required("wp_duur_aandeel", default=w["wp_duur_aandeel"]): _num(0, 50, 5, "%"),
             vol.Required("wp_stooklijn", default=w["wp_stooklijn"]): _num(0, 3, 0.1, "K/°C"),

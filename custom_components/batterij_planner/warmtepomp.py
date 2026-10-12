@@ -23,11 +23,11 @@ VERLAAGD = "verlaagd"
 
 @dataclass
 class WpInstellingen:
-    basis_temp: float = 45.0
-    verhoging: float = 5.0
-    verlaging: float = 5.0
-    min_temp: float = 35.0
-    max_temp: float = 55.0
+    basis_temp: float = 25.0
+    verhoging: float = 3.0
+    verlaging: float = 3.0
+    min_temp: float = 20.0
+    max_temp: float = 35.0
     goedkoop_aandeel: float = 25.0  # % goedkoopste kwartieren komende 24 uur
     duur_aandeel: float = 25.0  # % duurste kwartieren komende 24 uur
     stooklijn: float = 0.0  # K extra per °C buitentemperatuur onder 15 °C (0 = uit)

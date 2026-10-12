@@ -213,7 +213,7 @@
               "wp_pv_vermogen_entity": "Solar power (optional)"
             },
             "data_description": {
-              "wp_setpoint_entity": "The Tuya entity that sets the target temperature of the 50 L buffer tank: a climate, water_heater or number entity. The planner writes the target temperature here.",
+              "wp_setpoint_entity": "The entity that sets the target temperature of the buffer tank (Tuya Local or Tuya): a climate, water_heater or number entity. The planner writes the target temperature here.",
               "wp_buffer_temp_entity": "Actual buffer tank temperature. Only shown for information on the dashboard.",
               "wp_buiten_temp_entity": "Outdoor temperature sensor (heat pump, weather station or weather integration sensor). Needed for the heating curve.",
               "wp_thermostaat_entity": "Resideo/Honeywell T6 climate entity. When it reports hvac_action 'heating' (heat demand → circulation pump on), the setpoint is not lowered during expensive hours (see 'Don't lower during heat demand').",
@@ -222,11 +222,11 @@
           },
           "regeling": {
             "name": "Control",
-            "description": "How far and when the buffer tank setpoint is shifted.",
+            "description": "How far and when the buffer tank setpoint is shifted. K (kelvin) is a temperature difference: +3 K means 3 °C higher than the normal setpoint.",
             "data": {
               "wp_basis_temp": "Normal setpoint",
-              "wp_verhoging": "Raise when cheap or sunny",
-              "wp_verlaging": "Lower when expensive",
+              "wp_verhoging": "Raise when cheap or sunny (K = °C difference)",
+              "wp_verlaging": "Lower when expensive (K = °C difference)",
               "wp_min_temp": "Minimum setpoint",
               "wp_max_temp": "Maximum setpoint",
               "wp_goedkoop_aandeel": "Cheap = cheapest share of the next 24 h",
@@ -238,9 +238,9 @@
               "wp_min_minuten": "Minimum time between changes"
             },
             "data_description": {
-              "wp_basis_temp": "Buffer tank setpoint at average prices (at 15 °C outdoors when a heating curve is used).",
-              "wp_verhoging": "Kelvin added during cheap quarters or solar surplus. The buffer and the house store the extra heat. Note: every extra °C costs roughly 2–3 % heat pump efficiency (COP), so keep this modest.",
-              "wp_verlaging": "Kelvin subtracted during expensive quarters, so the heat pump pauses and the buffer and house use stored heat.",
+              "wp_basis_temp": "Buffer tank setpoint at average prices – use the temperature the heat pump runs at now (e.g. 25 °C for low-temperature floor heating). With a heating curve this is the value at 15 °C outdoors.",
+              "wp_verhoging": "Degrees added to the normal setpoint during cheap quarters or solar surplus (normal 25 °C + 3 K = 28 °C). The buffer and the house store the extra heat. Every extra degree costs roughly 2–3 % heat pump efficiency (COP), so keep this modest.",
+              "wp_verlaging": "Degrees subtracted from the normal setpoint during expensive quarters (normal 25 °C − 3 K = 22 °C), so the heat pump pauses and the buffer and house use stored heat.",
               "wp_min_temp": "The setpoint never goes below this (comfort limit). Make sure the radiators/floor heating still get warm enough at this temperature.",
               "wp_max_temp": "The setpoint never goes above this (heat pump and system limit).",
               "wp_goedkoop_aandeel": "A quarter counts as cheap when its price is among this share of the cheapest quarters of the next 24 hours (based on the Frank prices also used for the battery).",
