@@ -99,7 +99,7 @@ STANDAARD_INSTELLINGEN: dict[str, float | str] = {
     "wp_basis_temp": 25.0,
     "wp_verhoging": 3.0,
     "wp_verlaging": 3.0,
-    "wp_min_temp": 20.0,
+    "wp_min_temp": 25.0,
     "wp_max_temp": 35.0,
     "wp_goedkoop_aandeel": 25.0,
     "wp_duur_aandeel": 25.0,

@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.2.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.2.2** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -170,10 +170,10 @@ Optioneel stuurt de integratie ook de **streeftemperatuur van het buffervat** va
 |---|---|
 | kwartier hoort bij de goedkoopste 25 % van de komende 24 uur | normaal + 3 K → **28 °C** |
 | zonne-overschot ≥ 1500 W én thuisaccu ≥ 90 % | normaal + 3 K → **28 °C** |
-| kwartier hoort bij de duurste 25 % | normaal − 3 K → **22 °C**, behalve als de thermostaat warmte vraagt |
+| kwartier hoort bij de duurste 25 % | normaal − 3 K, maar nooit onder het minimum → met normaal 25 °C blijft het **25 °C** |
 | anders | normaal: **25 °C** (optioneel met stooklijn) |
 
-Altijd binnen min/max (20–35 °C) en hooguit één wijziging per 30 minuten (beschermt tegen pendelen). Stem *Normal setpoint* af op de temperatuur waarop je warmtepomp nu staat.
+Altijd binnen min/max (25–35 °C) en hooguit één wijziging per 30 minuten (beschermt tegen pendelen). Stem *Normal setpoint* af op de temperatuur waarop je warmtepomp nu staat.
 
 **Instellen:** Configureren → **Heat pump**. Kies de entiteit voor de buffervat-streeftemperatuur (climate, water_heater of number) en optioneel de buffertemperatuur, buitentemperatuur, de thermostaat (bijv. Resideo T6) en het zonvermogen. De sensor **Heat pump target temperature** laat zien wat de planner zou doen en waarom. Pas met de schakelaar **Control heat pump** wordt er echt geschreven. Zet je die uit, dan gaat de streeftemperatuur terug naar normaal.
 
@@ -220,6 +220,9 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.2.2
+- Warmtepomp: minimum streeftemperatuur standaard 25 °C (was 20 °C), maximum 35 °C. Met normaal 25 °C wordt er in dure uren dus niet verlaagd, alleen in goedkope of zonnige uren verhoogd naar 28 °C.
 
 ### 5.2.1
 - Warmtepomp: standaardwaarden afgestemd op lagetemperatuurverwarming: normaal 25 °C, +3 K / −3 K, grenzen 20–35 °C (was 45 °C, ±5 K, 35–55 °C). Een al opgeslagen instelling blijft staan.

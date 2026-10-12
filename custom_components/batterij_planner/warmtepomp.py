@@ -26,7 +26,7 @@ class WpInstellingen:
     basis_temp: float = 25.0
     verhoging: float = 3.0
     verlaging: float = 3.0
-    min_temp: float = 20.0
+    min_temp: float = 25.0
     max_temp: float = 35.0
     goedkoop_aandeel: float = 25.0  # % goedkoopste kwartieren komende 24 uur
     duur_aandeel: float = 25.0  # % duurste kwartieren komende 24 uur
