@@ -98,10 +98,12 @@ def _controleer_bronnen(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, 
 
 
 def _num(minimum: float, maximum: float, stap: float | str, eenheid: str | None = None) -> selector.NumberSelector:
+    # unit_of_measurement alleen meegeven als er een eenheid is: HA eist een str
+    # en weigert None (dan opent het formulier niet).
+    extra = {"unit_of_measurement": eenheid} if eenheid else {}
     return selector.NumberSelector(
         selector.NumberSelectorConfig(
-            min=minimum, max=maximum, step=stap, unit_of_measurement=eenheid,
-            mode=selector.NumberSelectorMode.BOX,
+            min=minimum, max=maximum, step=stap, mode=selector.NumberSelectorMode.BOX, **extra
         )
     )
 

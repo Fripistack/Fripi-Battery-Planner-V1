@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.0.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.0.2** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -195,6 +195,9 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.0.2
+- Instellingenscherm opent nu echt. Velden zonder eenheid (zoals de PV-correctiefactor) gaven een lege eenheid mee, die Home Assistant weigert. Daardoor kwam er nog steeds een lege foutmelding.
 
 ### 5.0.1
 - Instellingenscherm (Configureren → Instellingen) opent weer. Twee velden hadden een stapgrootte die Home Assistant weigert, waardoor je een lege foutmelding kreeg.
