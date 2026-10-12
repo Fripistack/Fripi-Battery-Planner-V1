@@ -97,7 +97,7 @@ def _controleer_bronnen(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, 
     return fouten
 
 
-def _num(minimum: float, maximum: float, stap: float, eenheid: str | None = None) -> selector.NumberSelector:
+def _num(minimum: float, maximum: float, stap: float | str, eenheid: str | None = None) -> selector.NumberSelector:
     return selector.NumberSelector(
         selector.NumberSelectorConfig(
             min=minimum, max=maximum, step=stap, unit_of_measurement=eenheid,
@@ -140,8 +140,8 @@ def _instellingen_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Sch
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Required("saldering_correctie", default=w["saldering_correctie"]): _num(0, 0.2, 0.0001, "€/kWh"),
-            vol.Required("teruglever_opslag", default=w["teruglever_opslag"]): _num(-0.1, 0.2, 0.0001, "€/kWh"),
+            vol.Required("saldering_correctie", default=w["saldering_correctie"]): _num(0, 0.2, "any", "€/kWh"),
+            vol.Required("teruglever_opslag", default=w["teruglever_opslag"]): _num(-0.1, 0.2, "any", "€/kWh"),
             vol.Required("pv_factor", default=w["pv_factor"]): _num(0.3, 1.5, 0.05),
             vol.Required("eindwaarde_factor", default=w["eindwaarde_factor"]): _num(0.3, 1.5, 0.05),
             vol.Required("verbruik_fallback_w", default=w["verbruik_fallback_w"]): _num(0, 5000, 10, "W"),

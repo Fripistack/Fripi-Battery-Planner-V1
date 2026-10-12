@@ -1,13 +1,13 @@
 {
   "domain": "batterij_planner",
   "name": "Batterij Planner",
-  "codeowners": [],
+  "codeowners": ["@Fripistack"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/",
+  "documentation": "https://github.com/Fripistack/Fripi-Battery-Planner-V1",
   "integration_type": "service",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/",
+  "issue_tracker": "https://github.com/Fripistack/Fripi-Battery-Planner-V1/issues",
   "requirements": [],
-  "version": "5.0.0"
+  "version": "5.0.1"
 }
