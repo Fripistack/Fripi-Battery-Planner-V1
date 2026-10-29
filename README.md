@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.2.2** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.3.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -104,7 +104,7 @@ Bij de integratie: **Configureren → Settings**. De instellingen staan in vijf 
 
 | groep | wat je instelt |
 |---|---|
-| **Battery** | capaciteit, min/max SOC, max laad-/ontlaadvermogen, rendement, slijtagekosten per ontladen kWh |
+| **Battery** | capaciteit, min/max SOC, max laad-/ontlaadvermogen, vermogensstappen 33/66 %, rendement, slijtagekosten per ontladen kWh |
 | **Prices and feed-in** | saldering (automatisch t/m 2026), terugleveropslag na saldering, waarde van de restlading aan het einde van de planning |
 | **Forecasts** | correctiefactor zonverwachting, verbruik zolang het profiel nog niet geleerd is |
 | **Inverter control** | accuspanning (W → A), laadstroom bij *Hold* (0 A), Storage Mode tijdens laden/ontladen |
@@ -140,6 +140,10 @@ Sinds 5.1.0 hebben de entiteiten Engelse namen. Entity-ID's van een bestaande in
 | Target SOC end of block | `..._doel_soc_einde_blok` / `..._target_soc_end_of_block` | verwachte SOC aan het eind van het huidige blok |
 | Learned consumption last quarter | `..._geleerd_verbruik_laatste_kwartier` / `..._learned_consumption_last_quarter` | geleerd verbruik; attributen: profiel per uur |
 | Control inverter | `switch.batterij_planner_sturing_actief` / `switch.batterij_planner_control_inverter` | omvormer wel/niet aansturen |
+| Heat pump target temperature | `sensor.batterij_planner_heat_pump_target_temperature` | gewenste streeftemperatuur buffervat + waarom |
+| Control heat pump | `switch.batterij_planner_control_heat_pump` | buffervat wel/niet aansturen |
+| Thermostat target temperature | `sensor.batterij_planner_thermostat_target_temperature` | gewenst setpoint kamerthermostaat; attributen: jouw setpoint (`basis`), stand, kamertemperatuur |
+| Control thermostat | `switch.batterij_planner_control_thermostat` | kamerthermostaat wel/niet verschuiven |
 | Recalculate plan | `button.batterij_planner_plan_herberekenen` / `button.batterij_planner_recalculate_plan` | direct opnieuw rekenen |
 
 De ruwe status van Mode blijft `zelfverbruik` / `vasthouden` / `laden` / `ontladen`, zodat bestaande automations en dashboards blijven werken. Home Assistant toont die als Self-consumption / Hold / Charge / Discharge.
@@ -151,18 +155,20 @@ De planner gebruikt alleen TOU-slot 1 en schrijft alleen als een waarde echt ver
 | modus | laadslot 1 | ontlaadslot 1 |
 |---|---|---|
 | zelfverbruik | 00:00–00:00 (uit) | 00:00–00:00 (uit) |
-| laden | nu → einde blok, max stroom | uit |
+| laden | nu → einde blok, stroom volgens stap | uit |
 | vasthouden | nu → einde blok, 0 A | uit |
-| ontladen | uit | nu → einde blok, max stroom |
+| ontladen | uit | nu → einde blok, stroom volgens stap |
 
-Stroom = vermogen ÷ accuspanning (3000 W ÷ 51,2 V = 58 A). Een blok dat over middernacht loopt, wordt tot 23:59 gezet en na middernacht opnieuw. Ontbreken gegevens (SOC onbekend, geen prijzen), dan valt de planner terug op zelfverbruik.
+Stroom = vermogen ÷ accuspanning (3000 W ÷ 51,2 V = 58 A).
+
+**Vermogensstappen (sinds 5.3.0).** Met *Power steps 33 % / 66 %* aan (standaard) mag het plan ook laden of ontladen op 33 % of 66 % van het maximale vermogen: bij 3000 W is dat 990 W (19 A) of 1980 W (38 A). Het plan kiest per kwartier wat het goedkoopst uitkomt; in de praktijk vooral om een laad- of ontlaadblok precies af te maken in plaats van een kwartier vol vermogen. De stap staat in de blokken (`vermogen_pct`), in *Next action* (bijv. `Charge 66% Tue 02:00–02:30`) en in de melding. Zet je de optie uit, dan is het altijd vol vermogen zoals voorheen. Een blok dat over middernacht loopt, wordt tot 23:59 gezet en na middernacht opnieuw. Ontbreken gegevens (SOC onbekend, geen prijzen), dan valt de planner terug op zelfverbruik.
 
 Twee dingen moet je één keer zelf testen:
 
 - **Vasthouden:** controleer op een zonnig uur dat de accu met een laadslot op 0 A echt stilstaat.
 - **Laden uit het net:** dat werkt alleen als *Allow grid charging* aan staat op de omvormer.
 
-## Warmtepomp (eerste versie)
+## Warmtepomp
 
 Optioneel stuurt de integratie ook de **streeftemperatuur van het buffervat** van de warmtepomp (Tuya / Tuya Local), op basis van dezelfde Frank-prijzen. K (kelvin) is een temperatuurverschil: +3 K betekent 3 °C hoger dan normaal.
 
@@ -176,6 +182,26 @@ Optioneel stuurt de integratie ook de **streeftemperatuur van het buffervat** va
 Altijd binnen min/max (25–35 °C) en hooguit één wijziging per 30 minuten (beschermt tegen pendelen). Stem *Normal setpoint* af op de temperatuur waarop je warmtepomp nu staat.
 
 **Instellen:** Configureren → **Heat pump**. Kies de entiteit voor de buffervat-streeftemperatuur (climate, water_heater of number) en optioneel de buffertemperatuur, buitentemperatuur, de thermostaat (bijv. Resideo T6) en het zonvermogen. De sensor **Heat pump target temperature** laat zien wat de planner zou doen en waarom. Pas met de schakelaar **Control heat pump** wordt er echt geschreven. Zet je die uit, dan gaat de streeftemperatuur terug naar normaal.
+
+> **Let op, weersafhankelijke regeling:** staat *Weather compensation* aan in de warmtepomp, dan rekent de pomp zelf zijn doeltemperatuur uit en negeert hij de streeftemperatuur van het buffervat. Gebruik dan de kamerthermostaat-sturing hieronder (of laat de buffervat-entiteit leeg).
+
+### Kamerthermostaat (sinds 5.3.0, optioneel)
+
+Het huis is een veel grotere warmtebuffer dan 100 L. Daarom kan de planner ook het setpoint van de kamerthermostaat (Resideo T6) een klein beetje verschuiven, met dezelfde regels voor goedkoop, duur en zonne-overschot als hierboven:
+
+| situatie | setpoint (standaard) |
+|---|---|
+| goedkoop of zonne-overschot | jouw setpoint + 0,5 K (voorverwarmen), nooit boven 22 °C |
+| duur | jouw setpoint − 0,5 K, nooit onder 17 °C (ook bij warmtevraag) |
+| anders | jouw setpoint |
+
+- De verschuiving is altijd ten opzichte van het setpoint dat jij of het thermostaatprogramma heeft ingesteld. Zet jij het setpoint zelf anders terwijl de planner het verschoven heeft, dan wordt jouw waarde de nieuwe basis en wacht de planner tot de prijsstand verandert.
+- Een setpoint boven het maximum of onder het minimum (bijv. nachtverlaging naar 15 °C) laat de planner staan.
+- Hooguit één wijziging per *Minimum time between changes* (standaard 30 min).
+- Zet je **Control thermostat** uit, dan zet de planner jouw setpoint terug.
+- Dit werkt ook met weersafhankelijke regeling aan: de T6 schakelt de circulatiepomp, de warmtepomp volgt vanzelf.
+
+**Instellen:** Configureren → **Heat pump**: kies bij *Room thermostat* de T6 (`climate.thermostaat_t6_thermostat`) en stel in de groep *Room thermostat* de stappen en grenzen in. Een buffervat-entiteit is niet nodig. De sensor **Thermostat target temperature** laat zien wat de planner zou doen; pas met de schakelaar **Control thermostat** wordt er geschreven. De entiteiten uit het package `warmtepomp.yaml` (`sensor.wp_buffer_temperatuur`, `sensor.wp_buiten_temperatuur`, `number.warmtepomp_temperatuur`) worden automatisch voorgesteld.
 
 ## Saldering
 
@@ -220,6 +246,14 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.3.0
+- Nieuw: vermogensstappen. Laden en ontladen kan nu ook op 33 % of 66 % van het maximale vermogen (in plaats van alleen vol vermogen). Aan/uit via *Settings → Battery → Power steps 33 % / 66 %* (standaard aan). De stap staat in de blokken (`vermogen_pct`), *Next action* en de melding; de laad-/ontlaadstroom volgt de stap.
+- Nieuw: sturing van de kamerthermostaat (Resideo T6), optioneel met eigen schakelaar *Control thermostat* en sensor *Thermostat target temperature*. Voorverwarmen (+0,5 K) in goedkope of zonnige kwartieren, −0,5 K in dure kwartieren, altijd ten opzichte van jouw eigen setpoint; uitzetten zet jouw setpoint terug. Werkt ook als de warmtepomp op weersafhankelijke regeling staat.
+- Warmtepomp: de buffervat-entiteit is nu optioneel, zodat je alleen de thermostaat kunt laten sturen. Uitleg over weersafhankelijke regeling toegevoegd.
+- Entiteiten uit het package `warmtepomp.yaml` en de T6 worden voorgesteld bij het instellen.
+- Dashboard: thermostaatkaart in de sectie Heat pump.
+- Tests (`tests/`) staan nu in de repository.
 
 ### 5.2.2
 - Warmtepomp: minimum streeftemperatuur standaard 25 °C (was 20 °C), maximum 35 °C. Met normaal 25 °C wordt er in dure uren dus niet verlaagd, alleen in goedkope of zonnige uren verhoogd naar 28 °C.
