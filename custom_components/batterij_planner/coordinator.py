@@ -67,6 +67,15 @@ def _float(state: State | None) -> float | None:
         return None
 
 
+def _float_attr(state: State | None, naam: str) -> float | None:
+    if state is None:
+        return None
+    try:
+        return float(state.attributes.get(naam))
+    except (TypeError, ValueError):
+        return None
+
+
 class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Rekent elke 5 minuten (en bij nieuwe prijzen) het plan opnieuw uit."""
 
@@ -77,6 +86,14 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.wp_actief = False
         self._wp_laatste_schrijf: datetime | None = None
         self.wp_laatste_actie: str | None = None
+        # kamerthermostaat: basis = setpoint van gebruiker/programma,
+        # geschreven = wat de planner zelf heeft gezet (None = niet verschoven)
+        self.t6_actief = False
+        self.t6_basis: float | None = None
+        self.t6_geschreven: float | None = None
+        self._t6_laatste_schrijf: datetime | None = None
+        self._t6_handmatig: str | None = None
+        self.t6_laatste_actie: str | None = None
         self.profiel = VerbruiksProfiel(hass, entry.entry_id, float(self.conf["verbruik_fallback_w"]))
         self._lock = asyncio.Lock()
         self._unsubs: list = []
@@ -161,7 +178,12 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         waarden = {}
         for k, v in self.conf.items():
             if k in namen and v is not None:
-                waarden[k] = v if k == "saldering" else float(v)
+                if k == "saldering":
+                    waarden[k] = v
+                elif k == "vermogen_stappen":
+                    waarden[k] = bool(v)
+                else:
+                    waarden[k] = float(v)
         return optimizer.Instellingen(**waarden)
 
     def _kwh(self, entity_id: str | None) -> float:
@@ -216,8 +238,9 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         resultaat = await self.hass.async_add_executor_job(optimizer.optimaliseer, slots, soc, inst)
         resultaat["pv_bron"] = pv_bron
-        resultaat["laad_vermogen_w"] = inst.max_laad_w
-        resultaat["ontlaad_vermogen_w"] = inst.max_ontlaad_w
+        deel = (resultaat.get("vermogen_pct") or 100) / 100.0
+        resultaat["laad_vermogen_w"] = round(inst.max_laad_w * deel)
+        resultaat["ontlaad_vermogen_w"] = round(inst.max_ontlaad_w * deel)
         return resultaat
 
     # ------------------------------------------------------------------ sturing
@@ -319,6 +342,8 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 start = dt_util.as_local(dt_util.parse_datetime(b["start"]))
                 e = dt_util.as_local(eind)
                 naam = {"vasthouden": "Hold", "laden": "Charge", "ontladen": "Discharge"}[b["modus"]]
+                if 0 < b.get("vermogen_pct", 100) < 100:
+                    naam += f" {b['vermogen_pct']}%"
                 regels.append(
                     f"{start:%H:%M}–{e:%H:%M} {naam}: SOC {b['soc_start']:.0f}% → {b['soc_eind']:.0f}%, "
                     f"avg. price € {b['afname_gem']:.3f}/kWh"
@@ -371,7 +396,8 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _warmtepomp(self, nu: datetime, res: dict[str, Any]) -> dict[str, Any] | None:
         setpoint_e = self.conf.get(CONF_WP_SETPOINT)
-        if not setpoint_e:
+        t6_e = self.conf.get(CONF_WP_THERMOSTAAT)
+        if not setpoint_e and not t6_e:
             return None
         inst = self._wp_instellingen()
         slots = res.get("slots") or []
@@ -383,15 +409,15 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         verbruik = _float(self.hass.states.get(self.conf.get(CONF_VERBRUIK) or ""))
         overschot = (pv - verbruik) if pv is not None and verbruik is not None else None
         soc = _float(self.hass.states.get(self.conf.get(CONF_SOC) or ""))
-        thermostaat = self.hass.states.get(self.conf.get(CONF_WP_THERMOSTAAT) or "")
+        thermostaat = self.hass.states.get(t6_e or "")
         vraag = None
         if thermostaat is not None:
             vraag = thermostaat.attributes.get("hvac_action") == "heating"
 
         besluit = warmtepomp.bepaal(inst, huidige_prijs, prijzen, buiten, overschot, soc, vraag)
-        huidig = self._wp_huidig_setpoint(setpoint_e)
+        huidig = self._wp_huidig_setpoint(setpoint_e) if setpoint_e else None
         uit = {
-            "doel": besluit.doel,
+            "doel": besluit.doel if setpoint_e else None,
             "stand": besluit.stand,
             "reden": besluit.reden,
             "basis": round(besluit.basis, 1),
@@ -404,14 +430,28 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "sturing_actief": self.wp_actief,
             "laatste_actie": self.wp_laatste_actie,
         }
+        if setpoint_e:
+            await self._wp_buffer(nu, setpoint_e, huidig, besluit, uit)
+        if t6_e:
+            try:
+                uit["thermostaat"] = await self._thermostaat(nu, t6_e, thermostaat, inst, besluit)
+            except Exception:  # noqa: BLE001 - thermostaat mag de rest nooit breken
+                _LOGGER.exception("Batterij Planner: fout in thermostaatsturing")
+                uit["thermostaat"] = {"fout": "Unexpected error, see the Home Assistant log"}
+        return uit
+
+    async def _wp_buffer(
+        self, nu: datetime, setpoint_e: str, huidig: float | None, besluit: warmtepomp.WpBesluit, uit: dict
+    ) -> None:
+        """Streeftemperatuur buffervat schrijven (alleen met 'Control heat pump' aan)."""
         if not self.wp_actief or huidig is None:
-            return uit
+            return
         if abs(huidig - besluit.doel) < 0.5:
-            return uit
+            return
         min_min = float(self.conf.get(CONF_WP_MIN_MINUTEN) or 0)
         if self._wp_laatste_schrijf and (nu - self._wp_laatste_schrijf) < timedelta(minutes=min_min):
             uit["wacht_tot"] = (self._wp_laatste_schrijf + timedelta(minutes=min_min)).isoformat()
-            return uit
+            return
         try:
             await self._wp_schrijf(setpoint_e, besluit.doel)
             self._wp_laatste_schrijf = nu
@@ -420,7 +460,87 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info("Batterij Planner warmtepomp: %s – %s", self.wp_laatste_actie, besluit.reden)
         except (HomeAssistantError, ValueError) as err:
             _LOGGER.error("Batterij Planner: warmtepomp-setpoint schrijven mislukt: %s", err)
+
+    async def _thermostaat(
+        self,
+        nu: datetime,
+        entity_id: str,
+        st: State | None,
+        inst: warmtepomp.WpInstellingen,
+        besluit: warmtepomp.WpBesluit,
+    ) -> dict[str, Any]:
+        """Setpoint kamerthermostaat verschuiven (alleen met 'Control thermostat' aan)."""
+        huidig = self._wp_huidig_setpoint(entity_id) if st is not None else None
+        uit: dict[str, Any] = {
+            "stand": besluit.prijs_stand,
+            "huidig_setpoint": huidig,
+            "kamer_temp": _float_attr(st, "current_temperature"),
+            "sturing_actief": self.t6_actief,
+            "laatste_actie": self.t6_laatste_actie,
+        }
+        if huidig is None:
+            uit["fout"] = "Thermostat setpoint unavailable"
+            return uit
+        # wijkt het setpoint af van wat de planner schreef, dan heeft de gebruiker of
+        # het thermostaatprogramma het veranderd: dat wordt de nieuwe basis, en de
+        # planner laat het met rust tot de prijsstand verandert
+        if self.t6_geschreven is None or self.t6_basis is None:
+            self.t6_basis = huidig
+            self.t6_geschreven = None
+        elif abs(huidig - self.t6_geschreven) >= 0.25:
+            self.t6_basis = huidig
+            self.t6_geschreven = None
+            self._t6_handmatig = besluit.prijs_stand
+        if self._t6_handmatig is not None and self._t6_handmatig != besluit.prijs_stand:
+            self._t6_handmatig = None
+
+        doel = warmtepomp.thermostaat_doel(inst, self.t6_basis, besluit.prijs_stand)
+        uit["basis"] = self.t6_basis
+        uit["doel"] = doel
+        if self._t6_handmatig is not None and self.t6_geschreven is None:
+            uit["doel"] = huidig
+            uit["wacht"] = "Setpoint changed by user or schedule – waiting for the next price change"
+            return uit
+        if not self.t6_actief or abs(huidig - doel) < 0.25:
+            return uit
+        min_min = float(self.conf.get(CONF_WP_MIN_MINUTEN) or 0)
+        if self._t6_laatste_schrijf and (nu - self._t6_laatste_schrijf) < timedelta(minutes=min_min):
+            uit["wacht_tot"] = (self._t6_laatste_schrijf + timedelta(minutes=min_min)).isoformat()
+            return uit
+        try:
+            await self.hass.services.async_call(
+                "climate", "set_temperature", {"entity_id": entity_id, "temperature": doel}, blocking=True
+            )
+        except (HomeAssistantError, ValueError) as err:
+            _LOGGER.error("Batterij Planner: thermostaat-setpoint schrijven mislukt: %s", err)
+            return uit
+        self._t6_laatste_schrijf = nu
+        self.t6_geschreven = None if abs(doel - self.t6_basis) < 0.25 else doel
+        self.t6_laatste_actie = f"{nu:%H:%M} {huidig:g} → {doel:g} °C ({besluit.prijs_stand})"
+        uit["laatste_actie"] = self.t6_laatste_actie
+        _LOGGER.info("Batterij Planner thermostaat: %s", self.t6_laatste_actie)
         return uit
+
+    async def async_t6_normaal(self) -> None:
+        """Bij uitzetten van de thermostaatsturing: terug naar het setpoint van de gebruiker."""
+        entity_id = self.conf.get(CONF_WP_THERMOSTAAT)
+        basis, geschreven = self.t6_basis, self.t6_geschreven
+        self.t6_geschreven = None
+        self._t6_handmatig = None
+        if not entity_id or basis is None or geschreven is None:
+            return
+        huidig = self._wp_huidig_setpoint(entity_id)
+        # alleen terugzetten als het setpoint nog staat zoals de planner het zette
+        if huidig is None or abs(huidig - geschreven) >= 0.25:
+            return
+        try:
+            await self.hass.services.async_call(
+                "climate", "set_temperature", {"entity_id": entity_id, "temperature": basis}, blocking=True
+            )
+            self._t6_laatste_schrijf = dt_util.now()
+            self.t6_laatste_actie = f"{dt_util.now():%H:%M} {huidig:g} → {basis:g} °C (control switched off)"
+        except (HomeAssistantError, ValueError) as err:
+            _LOGGER.error("Batterij Planner: thermostaat-setpoint schrijven mislukt: %s", err)
 
     async def async_wp_normaal(self) -> None:
         """Bij uitzetten van de warmtepompsturing: terug naar de basis-streeftemperatuur."""

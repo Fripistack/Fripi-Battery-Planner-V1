@@ -67,7 +67,7 @@
           "instellingen": "Settings – battery, prices, forecasts, inverter control, notifications",
           "bronnen": "Data sources – SOC, consumption, prices and solar forecast sensors",
           "omvormer": "Inverter entities – Solis Time-Charging slot 1 and Storage Mode",
-          "warmtepomp": "Heat pump – shift buffer tank heating to cheap and sunny hours"
+          "warmtepomp": "Heat pump – shift heating to cheap and sunny hours (buffer tank and/or room thermostat)"
         }
       },
       "instellingen": {
@@ -83,6 +83,7 @@
               "max_soc": "Maximum SOC",
               "max_laad_w": "Maximum charge power",
               "max_ontlaad_w": "Maximum discharge power",
+              "vermogen_stappen": "Power steps 33 % / 66 %",
               "rendement_laden": "Charge efficiency (AC → battery)",
               "rendement_ontladen": "Discharge efficiency (battery → AC)",
               "slijtage_eur_kwh": "Battery wear cost per discharged kWh"
@@ -93,6 +94,7 @@
               "max_soc": "The plan never charges above this SOC. Lower it (e.g. 90 %) if you want to spare the battery.",
               "max_laad_w": "Charge power used when the plan charges from grid and/or solar. RHI-3.6K-48ES-5G: 3000 W.",
               "max_ontlaad_w": "Discharge power used when the plan discharges to the house and the grid. RHI-3.6K-48ES-5G: 3000 W.",
+              "vermogen_stappen": "When on, the plan may also charge or discharge at 33 % or 66 % of the maximum power instead of only full power (e.g. 1000 or 2000 W with a 3000 W maximum). This lets the plan spread charging over more cheap quarters or discharge just enough during a peak. When off, charging and discharging always use the maximum power.",
               "rendement_laden": "Share of AC energy that ends up in the battery. Together with the discharge efficiency this gives the round-trip efficiency (95 % × 95 % ≈ 90 %).",
               "rendement_ontladen": "Share of stored energy that comes back out as AC energy.",
               "slijtage_eur_kwh": "Cost added to every discharged kWh to account for battery ageing (purchase price ÷ (cycles × capacity)). Higher value = fewer cycles: the plan only charges/discharges when the price difference covers this cost. Default € 0.03."
@@ -199,14 +201,14 @@
         }
       },
       "warmtepomp": {
-        "title": "Heat pump (buffer tank setpoint)",
-        "description": "Optional. Raises the buffer tank setpoint of the heat pump when electricity is cheap or there is a solar surplus, and lowers it when electricity is expensive, so the heat pump runs at the cheapest moments. Nothing is written until you switch on **Control heat pump** on the Battery Planner device; until then the sensor **Heat pump target temperature** only shows what it would do. Leave the setpoint entity empty to disable this feature.",
+        "title": "Heat pump (buffer tank and room thermostat)",
+        "description": "Optional. Shifts heating to cheap and sunny hours in two independent ways, each with its own switch on the Battery Planner device:\n• **Control heat pump** – raises/lowers the buffer tank setpoint. Note: with weather compensation switched on in the heat pump, it calculates its own target and ignores this setpoint.\n• **Control thermostat** – shifts the room thermostat (Resideo T6) setpoint a little: higher during cheap or sunny quarters (pre-heating the house), lower during expensive quarters. This also works with weather compensation on.\nNothing is written while a switch is off; the sensors **Heat pump target temperature** and **Thermostat target temperature** only show what the planner would do. Leave the buffer tank setpoint empty to use only the thermostat.",
         "sections": {
           "apparaten": {
             "name": "Devices",
             "description": "Entities of the heat pump (Tuya) and the room thermostat.",
             "data": {
-              "wp_setpoint_entity": "Buffer tank setpoint",
+              "wp_setpoint_entity": "Buffer tank setpoint (optional)",
               "wp_buffer_temp_entity": "Buffer tank temperature (optional)",
               "wp_buiten_temp_entity": "Outdoor temperature (optional)",
               "wp_thermostaat_entity": "Room thermostat (optional)",
@@ -216,7 +218,7 @@
               "wp_setpoint_entity": "The entity that sets the target temperature of the buffer tank (Tuya Local or Tuya): a climate, water_heater or number entity. The planner writes the target temperature here.",
               "wp_buffer_temp_entity": "Actual buffer tank temperature. Only shown for information on the dashboard.",
               "wp_buiten_temp_entity": "Outdoor temperature sensor (heat pump, weather station or weather integration sensor). Needed for the heating curve.",
-              "wp_thermostaat_entity": "Resideo/Honeywell T6 climate entity. When it reports hvac_action 'heating' (heat demand → circulation pump on), the setpoint is not lowered during expensive hours (see 'Don't lower during heat demand').",
+              "wp_thermostaat_entity": "Resideo/Honeywell T6 climate entity. Used for heat demand (hvac_action 'heating' → circulation pump on: the buffer setpoint is then not lowered during expensive hours) and, with **Control thermostat** switched on, its setpoint is shifted.",
               "wp_pv_vermogen_entity": "Solar power in W (Solis Modbus: Total PV Power). Solar surplus = solar power − household load power."
             }
           },
@@ -251,6 +253,22 @@
               "wp_niet_verlagen_bij_vraag": "When on, the setpoint is not lowered while the room thermostat is calling for heat, to protect comfort.",
               "wp_min_minuten": "Minimum time between two setpoint changes, to avoid short cycling of the heat pump and too many Tuya cloud commands."
             }
+          },
+          "thermostaat": {
+            "name": "Room thermostat",
+            "description": "Only used when **Control thermostat** is on. The shift is always relative to the setpoint you or the thermostat schedule set. If you change the setpoint yourself while it is shifted, your value becomes the new normal and the planner waits for the next price change. Switching off restores your setpoint.",
+            "data": {
+              "wp_t6_verhoging": "Pre-heat when cheap or sunny (K)",
+              "wp_t6_verlaging": "Lower when expensive (K)",
+              "wp_t6_min_temp": "Never lower below",
+              "wp_t6_max_temp": "Never raise above"
+            },
+            "data_description": {
+              "wp_t6_verhoging": "Degrees added to the room setpoint during cheap quarters or solar surplus (same rules as for the buffer tank). The house stores this heat; 0.5–1 K is usually unnoticeable.",
+              "wp_t6_verlaging": "Degrees subtracted from the room setpoint during expensive quarters. Applied even when the thermostat is calling for heat.",
+              "wp_t6_min_temp": "Lowering never goes below this room temperature.",
+              "wp_t6_max_temp": "Pre-heating never goes above this room temperature."
+            }
           }
         }
       }
@@ -260,7 +278,8 @@
       "geen_getal": "This sensor does not have a numeric value. Choose the Battery SOC sensor (%).",
       "geen_prijzen": "This sensor has no 'prices' attribute. Choose the Frank Quarter Prices sensor for today's prices (e.g. sensor.frank_prices_today), not the current-price sensor.",
       "soc_bereik": "Minimum SOC must be lower than maximum SOC.",
-      "wp_bereik": "Minimum setpoint must be lower than maximum setpoint."
+      "wp_bereik": "Minimum setpoint must be lower than maximum setpoint.",
+      "t6_bereik": "Thermostat minimum must be lower than thermostat maximum."
     }
   },
   "selector": {
@@ -297,6 +316,9 @@
       },
       "wp_doel": {
         "name": "Heat pump target temperature"
+      },
+      "t6_doel": {
+        "name": "Thermostat target temperature"
       }
     },
     "switch": {
@@ -305,6 +327,9 @@
       },
       "wp_sturing": {
         "name": "Control heat pump"
+      },
+      "t6_sturing": {
+        "name": "Control thermostat"
       }
     },
     "button": {
