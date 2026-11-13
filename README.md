@@ -1,6 +1,6 @@
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.3.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.4.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -128,6 +128,36 @@ Zet je de schakelaar uit, dan worden beide Time-Charging-slots leeggemaakt en dr
 
 ---
 
+## Gebruiksmodus: goedkoop inkopen voor eigen verbruik (sinds 5.4.0)
+
+Met de keuzelijst **Use mode** kies je hoe de accu gebruikt wordt:
+
+| keuze | wat het doet |
+|---|---|
+| *Lowest cost (incl. discharging to grid)* | standaard, het gedrag van vóór 5.4.0: ook ontladen naar het net als dat loont |
+| *Buy cheap, keep for self-use* | in de goedkoopste kwartieren uit het net laden, **tot de hoeveelheid die het huis nodig heeft**, en die energie daarna vasthouden voor eigen verbruik. De accu ontlaadt nooit naar het net |
+
+In de tweede modus kiest de planner nog steeds per kwartier tussen laden, vasthouden en zelfverbruik, maar:
+
+- **nooit ontladen naar het net**; zonne-overschot mag wel worden teruggeleverd;
+- **niet meer inkopen dan nodig**: laden uit het net stopt bij de *benodigde energie* (sensor *Energy needed from battery*). Dat is het verwachte verbruik tot het eind van de bekende prijzen plus de 6 uur daarna, min 80 % van de verwachte zonne-energie, met verliezen meegerekend. Zonne-overschot mag de accu altijd verder vullen;
+- **vasthouden voor de dure uren**: zijn de nachtprijzen gewoon en de ochtendpiek duur, dan wordt de accu 's nachts niet leeggetrokken.
+
+De keuze blijft bewaard na een herstart.
+
+### Zelflerend
+
+Er staat nergens een vaste accugrootte of een vast verbruik in; alles volgt uit de instellingen en wat de planner meet. Daardoor werkt het ook in een ander huis met een andere accu.
+
+| wat | hoe het geleerd wordt |
+|---|---|
+| verbruik per uur | per weekdag (ma t/m zo) en per werkdag/weekend, als voortschrijdend gemiddelde. Het weekdagprofiel telt mee zodra een uur 3 metingen heeft. Het schuift vanzelf mee met de seizoenen |
+| verbruiksmarge | elke dag: werkelijk verbruik ÷ voorspeld verbruik. De marge is het 80e percentiel van de laatste 21 dagen (1,0 – 1,5). Op ongeveer 4 van de 5 dagen is de geschatte hoeveelheid dan genoeg. De eerste 3 dagen: 1,1 |
+
+De geleerde marge staat als attribuut bij *Energy needed from battery*.
+
+---
+
 ## Entiteiten
 
 Sinds 5.1.0 hebben de entiteiten Engelse namen. Entity-ID's van een bestaande installatie veranderen niet. Een nieuwe installatie krijgt Engelse ID's (tweede kolom).
@@ -138,7 +168,9 @@ Sinds 5.1.0 hebben de entiteiten Engelse namen. Entity-ID's van een bestaande in
 | Expected saving | `..._verwachte_besparing` / `..._expected_saving` | € beter dan alleen zelfverbruik, over de hele bekende horizon |
 | Next action | `..._volgende_actie` / `..._next_action` | bijv. `Discharge Tue 06:45–09:00` |
 | Target SOC end of block | `..._doel_soc_einde_blok` / `..._target_soc_end_of_block` | verwachte SOC aan het eind van het huidige blok |
-| Learned consumption last quarter | `..._geleerd_verbruik_laatste_kwartier` / `..._learned_consumption_last_quarter` | geleerd verbruik; attributen: profiel per uur |
+| Learned consumption last quarter | `..._geleerd_verbruik_laatste_kwartier` / `..._learned_consumption_last_quarter` | geleerd verbruik; attributen: profiel per uur en per weekdag |
+| Energy needed from battery | `sensor.batterij_planner_energy_needed_from_battery` | kWh die het huis tot het eind van de horizon uit de accu nodig heeft (zelflerend); attributen: SOC daarvoor, gepland netladen, geleerde marge |
+| Use mode | `select.batterij_planner_use_mode` | *Lowest cost* of *Buy cheap, keep for self-use* |
 | Control inverter | `switch.batterij_planner_sturing_actief` / `switch.batterij_planner_control_inverter` | omvormer wel/niet aansturen |
 | Heat pump target temperature | `sensor.batterij_planner_heat_pump_target_temperature` | gewenste streeftemperatuur buffervat + waarom |
 | Control heat pump | `switch.batterij_planner_control_heat_pump` | buffervat wel/niet aansturen |
@@ -246,6 +278,10 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.4.0
+- Nieuwe gebruiksmodus *Buy cheap, keep for self-use* (keuzelijst **Use mode**): goedkoop inkopen tot de benodigde hoeveelheid, vasthouden voor eigen verbruik, nooit ontladen naar het net.
+- Zelflerende benodigde energie: verbruiksprofiel nu ook per weekdag en een geleerde verbruiksmarge. Nieuwe sensor *Energy needed from battery*.
 
 ### 5.3.0
 - Nieuw: vermogensstappen. Laden en ontladen kan nu ook op 33 % of 66 % van het maximale vermogen (in plaats van alleen vol vermogen). Aan/uit via *Settings → Battery → Power steps 33 % / 66 %* (standaard aan). De stap staat in de blokken (`vermogen_pct`), *Next action* en de melding; de laad-/ontlaadstroom volgt de stap.
