@@ -43,6 +43,7 @@ WP_INSTELLING_KEYS = [
     "wp_basis_temp", "wp_verhoging", "wp_verlaging", "wp_min_temp", "wp_max_temp",
     "wp_goedkoop_aandeel", "wp_duur_aandeel", "wp_stooklijn", "wp_pv_overschot_w",
     "wp_pv_min_soc", "wp_niet_verlagen_bij_vraag", CONF_WP_MIN_MINUTEN,
+    "wp_t6_verhoging", "wp_t6_verlaging", "wp_t6_min_temp", "wp_t6_max_temp",
 ]
 
 NIET_WIJZIGEN = "__niet_wijzigen__"
@@ -74,6 +75,11 @@ SUGGESTIES = {
     CONF_ONTLAAD_STROOM: "number.pv_omvormer_time_charging_discharge_current",
     CONF_WERKMODUS: "select.pv_omvormer_work_mode",
     CONF_WP_PV: "sensor.pv_omvormer_total_pv_power",
+    # warmtepomp-package (packages/warmtepomp.yaml) en Resideo T6
+    CONF_WP_SETPOINT: "number.warmtepomp_temperatuur",
+    CONF_WP_BUFFER: "sensor.wp_buffer_temperatuur",
+    CONF_WP_BUITEN: "sensor.wp_buiten_temperatuur",
+    CONF_WP_THERMOSTAAT: "climate.thermostaat_t6_thermostat",
 }
 
 # Standaardwaarden voor de rekeninstellingen (namen = velden van optimizer.Instellingen)
@@ -92,6 +98,7 @@ STANDAARD_INSTELLINGEN: dict[str, float | str] = {
     "teruglever_opslag": 0.0182,
     "eindwaarde_factor": 1.0,
     "verbruik_fallback_w": 400.0,
+    "vermogen_stappen": True,
     CONF_SPANNING: 51.2,
     CONF_VASTHOUDEN_STROOM: 0.0,
     CONF_WERKMODUS_TOU: NIET_WIJZIGEN,
@@ -108,4 +115,8 @@ STANDAARD_INSTELLINGEN: dict[str, float | str] = {
     "wp_pv_min_soc": 90.0,
     "wp_niet_verlagen_bij_vraag": True,
     CONF_WP_MIN_MINUTEN: 30.0,
+    "wp_t6_verhoging": 0.5,
+    "wp_t6_verlaging": 0.5,
+    "wp_t6_min_temp": 17.0,
+    "wp_t6_max_temp": 22.0,
 }

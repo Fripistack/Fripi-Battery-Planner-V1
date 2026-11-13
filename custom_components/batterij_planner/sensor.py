@@ -31,7 +31,7 @@ async def async_setup_entry(
     c = entry.runtime_data
     async_add_entities(
         [ModusSensor(c), BesparingSensor(c), VolgendeActieSensor(c), DoelSocSensor(c), VerbruikSensor(c),
-         WarmtepompDoelSensor(c)]
+         WarmtepompDoelSensor(c), ThermostaatDoelSensor(c)]
     )
 
 
@@ -58,7 +58,7 @@ class ModusSensor(BatterijPlannerEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         d = self.coordinator.data or {}
         sleutels = (
-            "fout", "blok_einde", "soc_nu", "soc_doel_einde_blok", "kosten_plan", "kosten_zelfverbruik",
+            "fout", "blok_einde", "vermogen_pct", "laad_vermogen_w", "ontlaad_vermogen_w", "soc_nu", "soc_doel_einde_blok", "kosten_plan", "kosten_zelfverbruik",
             "doorvoer_kwh", "horizon_einde", "kwartieren", "restwaarde_eur_kwh", "pv_bron",
             "pv_verwacht_kwh", "verbruik_verwacht_kwh", "sturing_actief", "bijgewerkt", "blokken", "slots",
         )
@@ -105,7 +105,10 @@ class VolgendeActieSensor(BatterijPlannerEntity, SensorEntity):
                 if start is None or eind is None:
                     return b["modus"]
                 start, eind = dt_util.as_local(start), dt_util.as_local(eind)
-                return f"{MODUS_NAAM[b['modus']]} {DAGEN[start.weekday()]} {start:%H:%M}–{eind:%H:%M}"
+                naam = MODUS_NAAM[b["modus"]]
+                if 0 < b.get("vermogen_pct", 100) < 100:
+                    naam += f" {b['vermogen_pct']}%"
+                return f"{naam} {DAGEN[start.weekday()]} {start:%H:%M}–{eind:%H:%M}"
         return "None planned"
 
 
@@ -167,3 +170,32 @@ class WarmtepompDoelSensor(BatterijPlannerEntity, SensorEntity):
         wp = dict((self.coordinator.data or {}).get("warmtepomp") or {})
         wp.pop("doel", None)
         return wp
+
+
+class ThermostaatDoelSensor(BatterijPlannerEntity, SensorEntity):
+    """Setpoint dat de planner voor de kamerthermostaat wil (met toelichting)."""
+
+    _attr_translation_key = "t6_doel"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = "°C"
+    _attr_icon = "mdi:home-thermometer-outline"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "t6_doel")
+
+    def _t6(self) -> dict[str, Any]:
+        return (((self.coordinator.data or {}).get("warmtepomp") or {}).get("thermostaat")) or {}
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool(self._t6())
+
+    @property
+    def native_value(self) -> float | None:
+        return self._t6().get("doel")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        t6 = dict(self._t6())
+        t6.pop("doel", None)
+        return t6

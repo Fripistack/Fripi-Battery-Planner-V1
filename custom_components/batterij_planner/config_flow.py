@@ -124,7 +124,7 @@ def _num(minimum: float, maximum: float, stap: float | str, eenheid: str | None 
 SECTIES: dict[str, list[str]] = {
     "accu": [
         "capaciteit_kwh", "min_soc", "max_soc", "max_laad_w", "max_ontlaad_w",
-        "rendement_laden", "rendement_ontladen", "slijtage_eur_kwh",
+        "vermogen_stappen", "rendement_laden", "rendement_ontladen", "slijtage_eur_kwh",
     ],
     "prijzen": ["saldering", "saldering_correctie", "teruglever_opslag", "eindwaarde_factor"],
     "voorspelling": ["pv_factor", "verbruik_fallback_w"],
@@ -180,6 +180,7 @@ def _instellingen_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Sch
         "max_soc": _num(40, 100, 1, "%"),
         "max_laad_w": _num(100, 20000, 100, "W"),
         "max_ontlaad_w": _num(100, 20000, 100, "W"),
+        "vermogen_stappen": selector.BooleanSelector(),
         "rendement_laden": _num(70, 100, 0.5, "%"),
         "rendement_ontladen": _num(70, 100, 0.5, "%"),
         "slijtage_eur_kwh": _num(0, 0.3, 0.001, "€/kWh"),
@@ -219,10 +220,19 @@ def _wp_schema(hass: HomeAssistant, huidig: dict[str, Any]) -> vol.Schema:
             vol.Required(CONF_WP_MIN_MINUTEN, default=w[CONF_WP_MIN_MINUTEN]): _num(0, 240, 5, "min"),
         }
     )
+    thermostaat = vol.Schema(
+        {
+            vol.Required("wp_t6_verhoging", default=w["wp_t6_verhoging"]): _num(0, 3, 0.5, "K"),
+            vol.Required("wp_t6_verlaging", default=w["wp_t6_verlaging"]): _num(0, 3, 0.5, "K"),
+            vol.Required("wp_t6_min_temp", default=w["wp_t6_min_temp"]): _num(10, 25, 0.5, "°C"),
+            vol.Required("wp_t6_max_temp", default=w["wp_t6_max_temp"]): _num(15, 28, 0.5, "°C"),
+        }
+    )
     return vol.Schema(
         {
             vol.Required("apparaten"): section(_entity_schema(hass, WP_ENTITY_KEYS, huidig), {"collapsed": False}),
             vol.Required("regeling"): section(regeling, {"collapsed": False}),
+            vol.Required("thermostaat"): section(thermostaat, {"collapsed": False}),
         }
     )
 
@@ -287,11 +297,19 @@ class BatterijPlannerOptionsFlow(OptionsFlow):
         if user_input is not None:
             apparaten = user_input.get("apparaten", {}) or {}
             regeling = user_input.get("regeling", {}) or {}
+            thermostaat = user_input.get("thermostaat", {}) or {}
             if regeling.get("wp_min_temp", 0) >= regeling.get("wp_max_temp", 100):
                 fouten["base"] = "wp_bereik"
+            elif thermostaat.get("wp_t6_min_temp", 0) >= thermostaat.get("wp_t6_max_temp", 100):
+                fouten["base"] = "t6_bereik"
             else:
                 return self.async_create_entry(
-                    data={**self.config_entry.options, **_met_lege_optionele(WP_ENTITY_KEYS, apparaten), **regeling}
+                    data={
+                        **self.config_entry.options,
+                        **_met_lege_optionele(WP_ENTITY_KEYS, apparaten),
+                        **regeling,
+                        **thermostaat,
+                    }
                 )
         return self.async_show_form(
             step_id="warmtepomp", data_schema=_wp_schema(self.hass, self._huidig()), errors=fouten

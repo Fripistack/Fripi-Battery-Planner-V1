@@ -15,7 +15,8 @@ from .entity import BatterijPlannerEntity
 async def async_setup_entry(
     hass: HomeAssistant, entry: BatterijPlannerConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities([SturingSwitch(entry.runtime_data), WarmtepompSwitch(entry.runtime_data)])
+    c = entry.runtime_data
+    async_add_entities([SturingSwitch(c), WarmtepompSwitch(c), ThermostaatSwitch(c)])
 
 
 class SturingSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
@@ -77,4 +78,53 @@ class WarmtepompSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
         self.coordinator.wp_actief = False
         self.async_write_ha_state()
         await self.coordinator.async_wp_normaal()
+        await self.coordinator.async_request_refresh()
+
+
+class ThermostaatSwitch(BatterijPlannerEntity, SwitchEntity, RestoreEntity):
+    """Uit = alleen adviseren, aan = setpoint kamerthermostaat verschuiven."""
+
+    _attr_translation_key = "t6_sturing"
+    _attr_icon = "mdi:home-thermometer"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "t6_sturing")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        vorig = await self.async_get_last_state()
+        if vorig is None:
+            return
+        # basis en geschreven setpoint bewaren over een herstart heen, anders
+        # wordt een verschoven setpoint na een herstart de nieuwe basis
+        try:
+            basis = vorig.attributes.get("basis_setpoint")
+            geschreven = vorig.attributes.get("planner_setpoint")
+            self.coordinator.t6_basis = None if basis is None else float(basis)
+            self.coordinator.t6_geschreven = None if geschreven is None else float(geschreven)
+        except (TypeError, ValueError):
+            pass
+        if vorig.state == "on":
+            self.coordinator.t6_actief = True
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.t6_actief
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "basis_setpoint": self.coordinator.t6_basis,
+            "planner_setpoint": self.coordinator.t6_geschreven,
+        }
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        self.coordinator.t6_actief = True
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        self.coordinator.t6_actief = False
+        await self.coordinator.async_t6_normaal()
+        self.async_write_ha_state()
         await self.coordinator.async_request_refresh()

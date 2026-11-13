@@ -5,6 +5,9 @@ Dynamic programming over de accu-inhoud, per kwartier één van vier modi:
   vasthouden   : accu staat stil (overschot -> net, tekort -> net)
   laden        : accu laden op max vermogen (PV en/of net)
   ontladen     : accu ontladen op max vermogen (huis + teruglevering)
+
+Laden en ontladen kunnen (optioneel) ook op 33 % of 66 % van het maximale
+vermogen; elk vermogen is dan een eigen actie in de dynamic programming.
 """
 from __future__ import annotations
 
@@ -17,6 +20,8 @@ MODI = ("zelfverbruik", "vasthouden", "laden", "ontladen")
 CODES = ("Z", "V", "L", "O")
 KWARTIER = timedelta(minutes=15)
 DAGEN = ("ma", "di", "wo", "do", "vr", "za", "zo")
+# vermogensstappen als deel van het maximale laad-/ontlaadvermogen
+STAPPEN = (0.33, 0.66, 1.0)
 
 
 @dataclass
@@ -40,6 +45,7 @@ class Instellingen:
     modus_drempel: float = 0.002
     verbruik_fallback_w: float = 400.0
     soc_stap_kwh: float = 0.1
+    vermogen_stappen: bool = True  # ook laden/ontladen op 33 % en 66 %
 
 
 @dataclass
@@ -195,7 +201,13 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
     pc = [inst.max_laad_w / 1000.0 * 0.25 * s.frac for s in slots]
     pd = [inst.max_ontlaad_w / 1000.0 * 0.25 * s.frac for s in slots]
 
-    def stap(e: float, m: int, i: int) -> tuple[float, float, float, float]:
+    # acties: (modus, deel van max vermogen)
+    stappen = STAPPEN if inst.vermogen_stappen else (1.0,)
+    acties = [(0, 1.0), (1, 1.0)] + [(2, f) for f in stappen] + [(3, f) for f in stappen]
+    na = len(acties)
+
+    def stap(e: float, a: int, i: int) -> tuple[float, float, float, float]:
+        m, f = acties[a]
         ov = pv[i] - ld[i]
         if m == 0:
             if ov >= 0:
@@ -205,9 +217,9 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
         elif m == 1:
             b = 0.0
         elif m == 2:
-            b = min(pc[i], max(0.0, emax - e) / eta_c)
+            b = min(pc[i] * f, max(0.0, emax - e) / eta_c)
         else:
-            b = -min(pd[i], max(0.0, e - emin) * eta_d)
+            b = -min(pd[i] * f, max(0.0, e - emin) * eta_d)
         e2 = e + b * eta_c if b >= 0 else e + b / eta_d
         g = ld[i] - pv[i] + b
         k = g * imp[i] if g >= 0 else g * exp[i]
@@ -245,8 +257,8 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
         rij = []
         for e in raster:
             best = math.inf
-            for m in range(4):
-                r = stap(e, m, i)
+            for a in range(na):
+                r = stap(e, a, i)
                 tot = r[1] + interp(volgende, r[0])
                 if tot < best - 1e-9:
                     best = tot
@@ -255,18 +267,18 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
 
     e0 = min(max(cap * soc_pct / 100.0, emin), emax)
     e = e0
-    modi: list[int] = []
+    modi: list[int] = []  # index in acties
     soc: list[float] = []
     accu: list[float] = []
     kosten_plan = 0.0
     for i in range(n):
         best = math.inf
         bm, br = 0, None
-        for m in range(4):
-            r = stap(e, m, i)
+        for a in range(na):
+            r = stap(e, a, i)
             tot = r[1] + interp(waarden[i + 1], r[0])
             if tot < best - 1e-9:
-                best, bm, br = tot, m, r
+                best, bm, br = tot, a, r
         modi.append(bm)
         e = br[0]
         kosten_plan += br[1] - (drempel if bm else 0.0)
@@ -282,6 +294,13 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
         kosten_ref += r[1]
     kosten_ref -= (e - emin) * eindprijs
 
+    def modus(a: int) -> str:
+        return MODI[acties[a][0]]
+
+    def pct(a: int) -> int:
+        m, f = acties[a]
+        return round(f * 100) if m >= 2 else 0
+
     blokken = []
     i = 0
     while i < n:
@@ -294,7 +313,8 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
                 "start": slots[i].start.isoformat(),
                 "eind": slots[j].eind.isoformat(),
                 "tijd": f"{DAGEN[slots[i].start.weekday()]} {_hhmm(slots[i].start)}-{_hhmm(slots[j].eind)}",
-                "modus": MODI[modi[i]],
+                "modus": modus(modi[i]),
+                "vermogen_pct": pct(modi[i]),
                 "soc_start": round(soc_start, 1),
                 "soc_eind": round(soc[j] / cap * 100.0, 1),
                 "afname_gem": round(sum(imp[i : j + 1]) / (j - i + 1), 4),
@@ -306,18 +326,20 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
     compact = [
         [
             int(s.start.timestamp() * 1000),
-            CODES[modi[k]],
+            CODES[acties[modi[k]][0]],
             round(soc[k] / cap * 100.0, 1),
             round(s.afname, 4),
             round(s.terug, 4),
             round(s.pv * 4 / s.frac, 2),
             round(s.verbruik * 4 / s.frac, 2),
+            pct(modi[k]),
         ]
         for k, s in enumerate(slots)
     ]
 
     return {
-        "modus": MODI[modi[0]],
+        "modus": modus(modi[0]),
+        "vermogen_pct": pct(modi[0]),
         "blok_einde": slots[_einde_run(modi)].eind,
         "soc_nu": round(soc_pct, 1),
         "soc_doel_einde_blok": blokken[0]["soc_eind"],
