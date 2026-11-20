@@ -1,6 +1,11 @@
+<img src="custom_components/batterij_planner/brand/icon.png" alt="" width="96" align="right">
+
 # Batterij Planner voor Home Assistant
 
-**Versie: 5.4.0** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+**Versie: 5.4.1** · [Versiegeschiedenis](#versiegeschiedenis) · [Releases](https://github.com/Fripistack/Fripi-Battery-Planner-V1/releases)
+
+[![Openen in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Fripistack&repository=Fripi-Battery-Planner-V1&category=integration)
+[![Integratie toevoegen](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=batterij_planner)
 
 Batterij Planner is een custom integration die je thuisbatterij stuurt op de dynamische kwartierprijzen van Frank Energie. Je stelt alles in via het scherm, zonder YAML.
 
@@ -63,9 +68,12 @@ config/
 ```
 
 **Via HACS (aanbevolen, dan krijg je updates in Home Assistant):**
-1. HACS → ⋮ rechtsboven → **Aangepaste repositories**.
-2. URL `https://github.com/Fripistack/Fripi-Battery-Planner-V1`, type **Integratie** → Toevoegen.
-3. Zoek **Batterij Planner** → **Downloaden**.
+1. Klik op deze knop. Home Assistant opent HACS met deze repository al ingevuld:
+
+   [![Openen in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Fripistack&repository=Fripi-Battery-Planner-V1&category=integration)
+
+   Werkt de knop niet? HACS → ⋮ rechtsboven → **Aangepaste repositories**, URL `https://github.com/Fripistack/Fripi-Battery-Planner-V1`, type **Integratie** → Toevoegen.
+2. Zoek **Batterij Planner** → **Downloaden**.
 
 Nieuwe versies verschijnen daarna onder **Instellingen → Updates**. Klik op Installeren en herstart Home Assistant.
 
@@ -278,6 +286,10 @@ logger:
 ```
 
 ## Versiegeschiedenis
+
+### 5.4.1
+- Eigen icoon en logo (map `brand/`), die Home Assistant (recente versies) toont bij Apparaten & diensten. Het icoon staat ook bovenaan deze README.
+- README: knoppen **Openen in HACS** en **Integratie toevoegen** (my.home-assistant.io).
 
 ### 5.4.0
 - Nieuwe gebruiksmodus *Buy cheap, keep for self-use* (keuzelijst **Use mode**): goedkoop inkopen tot de benodigde hoeveelheid, vasthouden voor eigen verbruik, nooit ontladen naar het net.
