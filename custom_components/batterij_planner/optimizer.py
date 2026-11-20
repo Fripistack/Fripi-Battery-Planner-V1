@@ -8,6 +8,14 @@ Dynamic programming over de accu-inhoud, per kwartier één van vier modi:
 
 Laden en ontladen kunnen (optioneel) ook op 33 % of 66 % van het maximale
 vermogen; elk vermogen is dan een eigen actie in de dynamic programming.
+
+Gebruiksmodi:
+  optimaal             : (standaard) zo laag mogelijke netto kosten, inclusief ontladen
+                         naar het net als dat loont.
+  inkopen_zelfverbruik : goedkoop inkopen en vasthouden voor eigen verbruik. De accu
+                         ontlaadt nooit naar het net en laadt uit het net hooguit zoveel
+                         als het huis tot het eind van de horizon nodig heeft (zelflerend
+                         verbruik × marge, min de zonne-energie die vrijwel zeker komt).
 """
 from __future__ import annotations
 
@@ -16,6 +24,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any
 
+GEBRUIKSMODI = ("optimaal", "inkopen_zelfverbruik")
 MODI = ("zelfverbruik", "vasthouden", "laden", "ontladen")
 CODES = ("Z", "V", "L", "O")
 KWARTIER = timedelta(minutes=15)
@@ -46,6 +55,10 @@ class Instellingen:
     verbruik_fallback_w: float = 400.0
     soc_stap_kwh: float = 0.1
     vermogen_stappen: bool = True  # ook laden/ontladen op 33 % en 66 %
+    gebruiksmodus: str = "optimaal"  # optimaal | inkopen_zelfverbruik
+    verbruik_marge: float = 1.1  # zelflerend: verbruik × marge voor de benodigde energie
+    pv_zeker_factor: float = 0.8  # deel van de PV-verwachting dat vrijwel zeker komt
+    reserve_na_horizon_kwh: float = 0.0  # verwacht verbruik direct na het eind van de horizon
 
 
 @dataclass
@@ -116,9 +129,18 @@ def zet_terugleverprijs(slots: list[Slot], inst: Instellingen) -> None:
             s.terug = (s.markt + inst.teruglever_opslag) * inst.teruglever_factor
 
 
-def zet_verbruik(slots: list[Slot], werkdag: list | None, weekend: list | None, fallback_w: float) -> None:
+def zet_verbruik(
+    slots: list[Slot],
+    werkdag: list | None,
+    weekend: list | None,
+    fallback_w: float,
+    per_dag: list | None = None,
+) -> None:
+    """Verwacht huisverbruik. per_dag (7 × 24, ma..zo) gaat voor werkdag/weekend."""
     for s in slots:
         prof = weekend if s.start.weekday() >= 5 else werkdag
+        if per_dag and len(per_dag) == 7:
+            prof = per_dag[s.start.weekday()] or prof
         w = fallback_w
         if prof and len(prof) == 24:
             try:
@@ -180,6 +202,33 @@ def _hhmm(d: datetime) -> str:
     return f"{d.hour:02d}:{d.minute:02d}"
 
 
+def benodigde_energie(
+    verbruik: list[float],
+    pv: list[float],
+    eta_c: float,
+    eta_d: float,
+    eind_kwh: float,
+    ruimte_kwh: float,
+) -> list[float]:
+    """Accu-inhoud (kWh boven min-SOC) die vóór elk kwartier nodig is om al het verwachte
+    tekort tot het eind van de horizon zelf te dekken. PV-overschot later vult de accu
+    weer aan en verlaagt dus wat er nu in moet zitten. Begrensd op de bruikbare ruimte.
+    """
+    n = len(verbruik)
+    nodig = [0.0] * (n + 1)
+    r = min(max(0.0, eind_kwh), ruimte_kwh)
+    nodig[n] = r
+    for i in range(n - 1, -1, -1):
+        tekort = verbruik[i] - pv[i]
+        if tekort > 0:
+            r = r + tekort / eta_d
+        else:
+            r = max(0.0, r + tekort * eta_c)
+        r = min(r, ruimte_kwh)
+        nodig[i] = r
+    return nodig
+
+
 def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[str, Any]:
     """Bereken het optimale plan. Verwacht gevulde afname/terug/pv/verbruik per slot."""
     n = len(slots)
@@ -204,6 +253,17 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
     # acties: (modus, deel van max vermogen)
     stappen = STAPPEN if inst.vermogen_stappen else (1.0,)
     acties = [(0, 1.0), (1, 1.0)] + [(2, f) for f in stappen] + [(3, f) for f in stappen]
+    zelf = inst.gebruiksmodus == "inkopen_zelfverbruik"
+    if zelf:
+        # nooit naar het net ontladen: de accu is alleen voor het eigen huis
+        acties = [a for a in acties if a[0] != 3]
+
+    # benodigde energie (alleen begrenzend in modus inkopen_zelfverbruik)
+    pv_zeker = [p / max(0.05, inst.pv_factor) * inst.pv_zeker_factor for p in pv]
+    nodig = benodigde_energie(
+        [v * inst.verbruik_marge for v in ld], pv_zeker, eta_c, eta_d,
+        inst.reserve_na_horizon_kwh * inst.verbruik_marge, max(0.0, emax - emin),
+    )
     na = len(acties)
 
     def stap(e: float, a: int, i: int) -> tuple[float, float, float, float]:
@@ -217,7 +277,13 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
         elif m == 1:
             b = 0.0
         elif m == 2:
-            b = min(pc[i] * f, max(0.0, emax - e) / eta_c)
+            if zelf:
+                # nooit meer uit het net inkopen dan nodig; PV-overschot mag er altijd in
+                pv_ruimte = min(max(0.0, pv[i] - ld[i]) * eta_c, emax - e)
+                ruimte = max(0.0, emin + nodig[i + 1] - e, pv_ruimte)
+            else:
+                ruimte = max(0.0, emax - e)
+            b = min(pc[i] * f, ruimte / eta_c)
         else:
             b = -min(pd[i] * f, max(0.0, e - emin) * eta_d)
         e2 = e + b * eta_c if b >= 0 else e + b / eta_d
@@ -251,7 +317,11 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
     eindprijs = max(0.0, min(p75 * inst.eindwaarde_factor * eta_d - slijt, laatste))
 
     waarden: list[list[float]] = [[]] * (n + 1)
-    waarden[n] = [-(e - emin) * eindprijs for e in raster]
+    if zelf:
+        # restwaarde alleen voor wat het huis na de horizon nog nodig heeft (niet hamsteren)
+        waarden[n] = [-min(e - emin, nodig[n]) * eindprijs for e in raster]
+    else:
+        waarden[n] = [-(e - emin) * eindprijs for e in raster]
     for i in range(n - 1, -1, -1):
         volgende = waarden[i + 1]
         rij = []
@@ -281,10 +351,11 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
                 best, bm, br = tot, a, r
         modi.append(bm)
         e = br[0]
-        kosten_plan += br[1] - (drempel if bm else 0.0)
+        kosten_plan += br[1] - (drempel if acties[bm][0] else 0.0)
         soc.append(e)
         accu.append(br[2])
-    kosten_plan -= (e - emin) * eindprijs
+    kosten_plan -= (min(e - emin, nodig[n]) if zelf else (e - emin)) * eindprijs
+    netladen = sum(max(0.0, a - max(0.0, pv[k] - ld[k])) for k, a in enumerate(accu) if acties[modi[k]][0] == 2)
 
     e = e0
     kosten_ref = 0.0
@@ -292,7 +363,7 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
         r = stap(e, 0, i)
         e = r[0]
         kosten_ref += r[1]
-    kosten_ref -= (e - emin) * eindprijs
+    kosten_ref -= (min(e - emin, nodig[n]) if zelf else (e - emin)) * eindprijs
 
     def modus(a: int) -> str:
         return MODI[acties[a][0]]
@@ -340,6 +411,10 @@ def optimaliseer(slots: list[Slot], soc_pct: float, inst: Instellingen) -> dict[
     return {
         "modus": modus(modi[0]),
         "vermogen_pct": pct(modi[0]),
+        "gebruiksmodus": inst.gebruiksmodus,
+        "benodigd_kwh": round(nodig[0], 1),
+        "benodigd_soc": round((emin + nodig[0]) / cap * 100.0, 1),
+        "netladen_gepland_kwh": round(netladen, 1),
         "blok_einde": slots[_einde_run(modi)].eind,
         "soc_nu": round(soc_pct, 1),
         "soc_doel_einde_blok": blokken[0]["soc_eind"],

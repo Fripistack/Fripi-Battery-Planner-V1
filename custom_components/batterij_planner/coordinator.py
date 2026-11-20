@@ -12,6 +12,7 @@ from homeassistant.const import SUN_EVENT_SUNRISE, SUN_EVENT_SUNSET
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_date
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -95,6 +96,8 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._t6_handmatig: str | None = None
         self.t6_laatste_actie: str | None = None
         self.profiel = VerbruiksProfiel(hass, entry.entry_id, float(self.conf["verbruik_fallback_w"]))
+        self._modus_store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.gebruiksmodus")
+        self.gebruiksmodus: str = optimizer.GEBRUIKSMODI[0]
         self._lock = asyncio.Lock()
         self._unsubs: list = []
         self._melding_gepland = False
@@ -104,6 +107,9 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ levensloop
     async def async_start(self) -> None:
         await self.profiel.async_load()
+        opgeslagen = await self._modus_store.async_load() or {}
+        if opgeslagen.get("modus") in optimizer.GEBRUIKSMODI:
+            self.gebruiksmodus = opgeslagen["modus"]
         verbruik = self.conf.get(CONF_VERBRUIK)
         self.profiel.meting(_float(self.hass.states.get(verbruik)), dt_util.now())
         self._unsubs.append(
@@ -118,6 +124,14 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._unsubs.append(
                 async_track_state_change_event(self.hass, [self.conf[CONF_PRIJS_MORGEN]], self._prijzen_event)
             )
+
+    async def async_zet_gebruiksmodus(self, modus: str) -> None:
+        """Gebruiksmodus wijzigen (select-entiteit); wordt bewaard over herstarts."""
+        if modus not in optimizer.GEBRUIKSMODI:
+            raise ValueError(modus)
+        self.gebruiksmodus = modus
+        await self._modus_store.async_save({"modus": modus})
+        await self.async_request_refresh()
 
     async def async_stop(self) -> None:
         for unsub in self._unsubs:
@@ -184,6 +198,8 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     waarden[k] = bool(v)
                 else:
                     waarden[k] = float(v)
+        waarden["gebruiksmodus"] = self.gebruiksmodus
+        waarden["verbruik_marge"] = self.profiel.verbruik_marge
         return optimizer.Instellingen(**waarden)
 
     def _kwh(self, entity_id: str | None) -> float:
@@ -214,7 +230,14 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise PlanFout("No prices available")
 
         optimizer.zet_terugleverprijs(slots, inst)
-        optimizer.zet_verbruik(slots, self.profiel.werkdag, self.profiel.weekend, inst.verbruik_fallback_w)
+        per_dag = self.profiel.profiel_per_dag()
+        optimizer.zet_verbruik(slots, self.profiel.werkdag, self.profiel.weekend, inst.verbruik_fallback_w, per_dag)
+        # verwacht verbruik in de 6 uur na het eind van de horizon (wat de accu dan nog moet leveren)
+        eind = slots[-1].eind
+        inst.reserve_na_horizon_kwh = sum(
+            per_dag[(eind + timedelta(hours=h)).weekday()][(eind + timedelta(hours=h)).hour] / 1000.0
+            for h in range(6)
+        )
 
         solcast = self._attr_lijst(self.conf.get(CONF_SOLCAST_VANDAAG), "detailedForecast") + self._attr_lijst(
             self.conf.get(CONF_SOLCAST_MORGEN), "detailedForecast"
@@ -238,6 +261,7 @@ class BatterijPlannerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         resultaat = await self.hass.async_add_executor_job(optimizer.optimaliseer, slots, soc, inst)
         resultaat["pv_bron"] = pv_bron
+        resultaat["leren"] = self.profiel.status()
         deel = (resultaat.get("vermogen_pct") or 100) / 100.0
         resultaat["laad_vermogen_w"] = round(inst.max_laad_w * deel)
         resultaat["ontlaad_vermogen_w"] = round(inst.max_ontlaad_w * deel)
